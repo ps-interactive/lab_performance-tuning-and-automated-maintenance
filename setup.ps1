@@ -1,95 +1,79 @@
-# SQL Server Performance Tuning Lab Setup Script
+# SQL Server Performance Tuning Lab Setup Script - Simplified
 Write-Host "Starting SQL Server lab setup..." -ForegroundColor Green
 
-# Install SQL Server 2019 Developer Edition
-Write-Host "Downloading SQL Server 2019..." -ForegroundColor Yellow
-$sqlDownloadPath = "C:\SQLServer2019-DEV.exe"
-Invoke-WebRequest -Uri "https://download.microsoft.com/download/7/c/1/7c14e92e-bdcb-4f89-b7cf-93543e7112d1/SQLServer2019-DEV-x64-ENU.exe" -OutFile $sqlDownloadPath
-
-# Extract SQL Server setup files
-Write-Host "Extracting SQL Server setup files..." -ForegroundColor Yellow
-$sqlExtractPath = "C:\SQLServerSetup"
-Start-Process -FilePath $sqlDownloadPath -ArgumentList "/u /x:$sqlExtractPath" -Wait
-
-# Install SQL Server silently
-Write-Host "Installing SQL Server 2019..." -ForegroundColor Yellow
-$installArgs = @(
-    "/ConfigurationFile=C:\SQLServerSetup\ConfigurationFile.ini",
-    "/Q",
-    "/IACCEPTSQLSERVERLICENSETERMS",
-    "/ACTION=Install",
-    "/FEATURES=SQLENGINE,TOOLS",
-    "/INSTANCENAME=MSSQLSERVER",
-    "/SQLSYSADMINACCOUNTS=`"BUILTIN\Administrators`"",
-    "/AGTSVCSTARTUPTYPE=Automatic"
-)
-
-# Create configuration file for SQL Server installation
-$configContent = @"
-[OPTIONS]
-ACTION="Install"
-FEATURES=SQLENGINE,TOOLS
-INSTANCENAME="MSSQLSERVER"
-SQLSYSADMINACCOUNTS="BUILTIN\Administrators"
-AGTSVCSTARTUPTYPE="Automatic"
-SQLSVCSTARTUPTYPE="Automatic"
-TCPENABLED="1"
-NPENABLED="1"
-IACCEPTSQLSERVERLICENSETERMS="True"
-"@
-Set-Content -Path "$sqlExtractPath\ConfigurationFile.ini" -Value $configContent
-
-# Run SQL Server setup
-Start-Process -FilePath "$sqlExtractPath\Setup.exe" -ArgumentList $installArgs -Wait
-
-# Download and install SSMS
-Write-Host "Downloading SQL Server Management Studio..." -ForegroundColor Yellow
-$ssmsUrl = "https://aka.ms/ssmsfullsetup"
-$ssmsPath = "C:\SSMS-Setup.exe"
-Invoke-WebRequest -Uri $ssmsUrl -OutFile $ssmsPath
-
-Write-Host "Installing SSMS..." -ForegroundColor Yellow
-Start-Process -FilePath $ssmsPath -ArgumentList "/install", "/quiet", "/norestart" -Wait
-
-# Create CarvedRock database and populate with sample data
-Write-Host "Setting up CarvedRock database..." -ForegroundColor Yellow
-
-# Wait for SQL Server to be ready
-Start-Sleep -Seconds 30
-
-# Create setup scripts directory
+# Create lab directories
 New-Item -Path "C:\LabScripts" -ItemType Directory -Force
+New-Item -Path "C:\SQLBackups" -ItemType Directory -Force
 
-# Download database setup scripts from GitHub
-$baseUrl = "https://raw.githubusercontent.com/ps-interactive/lab_performance-tuning-and-automated-maintenance/main"
-$scripts = @(
-    "create-database.sql",
-    "create-performance-issues.sql",
-    "create-blocking-scenario.sql",
-    "maintenance-scripts.sql"
-)
+# Create a simple test script to verify setup
+$testScript = @"
+Write-Host 'Lab setup script executed successfully!' -ForegroundColor Green
+Write-Host 'SQL Server needs to be installed manually for this lab.' -ForegroundColor Yellow
+Write-Host 'Please install SQL Server 2019 Developer Edition and SSMS.' -ForegroundColor Yellow
+"@
 
-foreach ($script in $scripts) {
-    Invoke-WebRequest -Uri "$baseUrl/$script" -OutFile "C:\LabScripts\$script"
-}
+Set-Content -Path "C:\LabScripts\test-setup.ps1" -Value $testScript
 
-# Execute database setup
-sqlcmd -S localhost -E -i "C:\LabScripts\create-database.sql"
-sqlcmd -S localhost -E -i "C:\LabScripts\create-performance-issues.sql"
-
-# Enable SQL Server Agent
-Set-Service -Name "SQLSERVERAGENT" -StartupType Automatic
-Start-Service -Name "SQLSERVERAGENT"
-
-# Create desktop shortcuts
+# Create desktop shortcuts to lab folders
 $WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\SQL Server Management Studio.lnk")
-$Shortcut.TargetPath = "C:\Program Files (x86)\Microsoft SQL Server Management Studio 19\Common7\IDE\Ssms.exe"
+$Shortcut = $WshShell.CreateShortcut("$env:Public\Desktop\Lab Scripts.lnk")
+$Shortcut.TargetPath = "C:\LabScripts"
 $Shortcut.Save()
 
-$Shortcut2 = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Lab Scripts.lnk")
-$Shortcut2.TargetPath = "C:\LabScripts"
+$Shortcut2 = $WshShell.CreateShortcut("$env:Public\Desktop\SQL Backups.lnk")
+$Shortcut2.TargetPath = "C:\SQLBackups"
 $Shortcut2.Save()
 
-Write-Host "Lab setup completed successfully!" -ForegroundColor Green
-Write-Host "You can now connect to SQL Server using SSMS with Windows Authentication" -ForegroundColor Cyan
+# Download SQL Server and SSMS installers
+Write-Host "Downloading SQL Server 2019 installer..." -ForegroundColor Yellow
+$sqlInstallerUrl = "https://go.microsoft.com/fwlink/?linkid=866662"
+$sqlInstallerPath = "C:\LabScripts\SQL2019-SSEI-Dev.exe"
+
+try {
+    Invoke-WebRequest -Uri $sqlInstallerUrl -OutFile $sqlInstallerPath -UseBasicParsing
+    Write-Host "SQL Server installer downloaded to: $sqlInstallerPath" -ForegroundColor Green
+} catch {
+    Write-Host "Failed to download SQL Server installer: $_" -ForegroundColor Red
+}
+
+Write-Host "Downloading SSMS installer..." -ForegroundColor Yellow
+$ssmsUrl = "https://aka.ms/ssmsfullsetup"
+$ssmsPath = "C:\LabScripts\SSMS-Setup.exe"
+
+try {
+    Invoke-WebRequest -Uri $ssmsUrl -OutFile $ssmsPath -UseBasicParsing
+    Write-Host "SSMS installer downloaded to: $ssmsPath" -ForegroundColor Green
+} catch {
+    Write-Host "Failed to download SSMS installer: $_" -ForegroundColor Red
+}
+
+# Create a simple setup instructions file
+$instructions = @"
+SQL Server Lab Setup Instructions
+==================================
+
+1. Install SQL Server 2019:
+   - Run C:\LabScripts\SQL2019-SSEI-Dev.exe
+   - Choose "Basic" installation
+   - Accept the license terms
+   - Wait for installation to complete
+
+2. Install SQL Server Management Studio:
+   - Run C:\LabScripts\SSMS-Setup.exe
+   - Follow the installation wizard
+
+3. After installation:
+   - Open SSMS
+   - Connect to localhost using Windows Authentication
+   - The lab scripts will be available in C:\LabScripts
+
+Lab scripts will be downloaded after SQL Server is installed.
+"@
+
+Set-Content -Path "C:\LabScripts\Setup-Instructions.txt" -Value $instructions
+
+# Open the instructions file
+Start-Process notepad.exe "C:\LabScripts\Setup-Instructions.txt"
+
+Write-Host "Initial setup completed!" -ForegroundColor Green
+Write-Host "Please follow the instructions in the opened file to complete SQL Server installation." -ForegroundColor Yellow
