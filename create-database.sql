@@ -1,8 +1,7 @@
--- Create CarvedRock Database
+-- Create CarvedRock Database 
 USE master;
 GO
 
--- Drop database if it exists
 IF EXISTS (SELECT * FROM sys.databases WHERE name = 'CarvedRock')
 BEGIN
     ALTER DATABASE CarvedRock SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
@@ -10,14 +9,13 @@ BEGIN
 END
 GO
 
--- Create new database
 CREATE DATABASE CarvedRock;
 GO
 
 USE CarvedRock;
 GO
 
--- Create tables
+-- Create all tables at once
 CREATE TABLE Customers (
     CustomerID INT IDENTITY(1,1) PRIMARY KEY,
     FirstName NVARCHAR(50),
@@ -73,7 +71,7 @@ CREATE TABLE InventoryTransactions (
 );
 GO
 
--- Insert sample products first
+-- Insert products
 INSERT INTO Products (ProductName, Category, Price, StockQuantity, ReorderLevel)
 VALUES 
     ('Hiking Boots', 'Footwear', 129.99, 100, 20),
@@ -88,101 +86,61 @@ VALUES
     ('Headlamp', 'Accessories', 34.99, 150, 30);
 GO
 
--- Generate customers (reduced to 5000 for faster setup)
-PRINT 'Generating 5000 customers...';
+-- FAST customer generation using set-based insert (100 customers only)
+WITH Numbers AS (
+    SELECT TOP 100 ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS n
+    FROM sys.all_objects
+)
+INSERT INTO Customers (FirstName, LastName, Email, Phone, Address, City, State, ZipCode)
+SELECT 
+    'FirstName' + CAST(n AS NVARCHAR(10)),
+    'LastName' + CAST(n AS NVARCHAR(10)),
+    'customer' + CAST(n AS NVARCHAR(10)) + '@example.com',
+    '555-' + RIGHT('0000' + CAST(n AS NVARCHAR(10)), 4),
+    CAST(n AS NVARCHAR(10)) + ' Main Street',
+    CASE n % 5
+        WHEN 0 THEN 'Seattle'
+        WHEN 1 THEN 'Portland'
+        WHEN 2 THEN 'San Francisco'
+        WHEN 3 THEN 'Los Angeles'
+        ELSE 'Denver'
+    END,
+    CASE n % 5
+        WHEN 0 THEN 'WA'
+        WHEN 1 THEN 'OR'
+        WHEN 2 THEN 'CA'
+        WHEN 3 THEN 'CA'
+        ELSE 'CO'
+    END,
+    RIGHT('00000' + CAST(10000 + n AS NVARCHAR(10)), 5)
+FROM Numbers;
+GO
+
+-- FAST order generation (500 orders only)
 DECLARE @i INT = 1;
-WHILE @i <= 5000
+WHILE @i <= 500
 BEGIN
-    INSERT INTO Customers (FirstName, LastName, Email, Phone, Address, City, State, ZipCode)
+    INSERT INTO Orders (CustomerID, OrderDate, ShipDate, OrderStatus, TotalAmount)
     VALUES (
-        'FirstName' + CAST(@i AS NVARCHAR(10)),
-        'LastName' + CAST(@i AS NVARCHAR(10)),
-        'customer' + CAST(@i AS NVARCHAR(10)) + '@example.com',
-        '555-' + RIGHT('0000' + CAST(@i AS NVARCHAR(10)), 4),
-        CAST(@i AS NVARCHAR(10)) + ' Main Street',
-        CASE WHEN @i % 5 = 0 THEN 'Seattle'
-             WHEN @i % 5 = 1 THEN 'Portland'
-             WHEN @i % 5 = 2 THEN 'San Francisco'
-             WHEN @i % 5 = 3 THEN 'Los Angeles'
-             ELSE 'Denver' END,
-        CASE WHEN @i % 5 = 0 THEN 'WA'
-             WHEN @i % 5 = 1 THEN 'OR'
-             WHEN @i % 5 = 2 THEN 'CA'
-             WHEN @i % 5 = 3 THEN 'CA'
-             ELSE 'CO' END,
-        RIGHT('00000' + CAST(10000 + @i AS NVARCHAR(10)), 5)
+        1 + ABS(CHECKSUM(NEWID())) % 100,
+        DATEADD(DAY, -ABS(CHECKSUM(NEWID())) % 365, GETDATE()),
+        DATEADD(DAY, -ABS(CHECKSUM(NEWID())) % 360, GETDATE()),
+        'Shipped',
+        100 + ABS(CHECKSUM(NEWID())) % 900
     );
     
-    -- Print progress every 1000 records
-    IF @i % 1000 = 0
-        PRINT 'Created ' + CAST(@i AS NVARCHAR(10)) + ' customers...';
+    -- Add one order detail per order
+    INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice)
+    VALUES (
+        @i,
+        1 + ABS(CHECKSUM(NEWID())) % 10,
+        1 + ABS(CHECKSUM(NEWID())) % 5,
+        50 + ABS(CHECKSUM(NEWID())) % 150
+    );
     
     SET @i = @i + 1;
 END
 GO
 
--- Generate orders (reduced to 10000 for faster setup)
-PRINT 'Generating 10000 orders...';
-DECLARE @i INT = 1;
-DECLARE @CustomerID INT;
-DECLARE @OrderDate DATETIME;
-DECLARE @OrderID INT;
-DECLARE @ProductID INT;
-DECLARE @Quantity INT;
-DECLARE @UnitPrice DECIMAL(10,2);
-
-WHILE @i <= 10000
-BEGIN
-    -- Random customer
-    SET @CustomerID = 1 + ABS(CHECKSUM(NEWID())) % 5000;
-    SET @OrderDate = DATEADD(DAY, -ABS(CHECKSUM(NEWID())) % 365, GETDATE());
-    
-    INSERT INTO Orders (CustomerID, OrderDate, ShipDate, OrderStatus, ShippingAddress, ShippingCity, ShippingState, ShippingZip)
-    SELECT @CustomerID, @OrderDate, 
-           DATEADD(DAY, 1 + ABS(CHECKSUM(NEWID())) % 5, @OrderDate),
-           CASE WHEN ABS(CHECKSUM(NEWID())) % 10 > 8 THEN 'Pending'
-                WHEN ABS(CHECKSUM(NEWID())) % 10 > 1 THEN 'Shipped'
-                ELSE 'Delivered' END,
-           Address, City, State, ZipCode
-    FROM Customers WHERE CustomerID = @CustomerID;
-    
-    SET @OrderID = SCOPE_IDENTITY();
-    
-    -- Add 1-3 items per order
-    DECLARE @NumItems INT = 1 + ABS(CHECKSUM(NEWID())) % 3;
-    DECLARE @j INT = 1;
-    
-    WHILE @j <= @NumItems
-    BEGIN
-        SET @ProductID = 1 + ABS(CHECKSUM(NEWID())) % 10;
-        SET @Quantity = 1 + ABS(CHECKSUM(NEWID())) % 5;
-        SELECT @UnitPrice = Price FROM Products WHERE ProductID = @ProductID;
-        
-        INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice, Discount)
-        VALUES (@OrderID, @ProductID, @Quantity, @UnitPrice, 
-                CASE WHEN ABS(CHECKSUM(NEWID())) % 10 > 7 THEN 10 ELSE 0 END);
-        
-        SET @j = @j + 1;
-    END;
-    
-    -- Update order total
-    UPDATE Orders 
-    SET TotalAmount = (
-        SELECT SUM(Quantity * UnitPrice * (1 - Discount/100.0))
-        FROM OrderDetails 
-        WHERE OrderID = @OrderID
-    )
-    WHERE OrderID = @OrderID;
-    
-    -- Print progress every 2000 records
-    IF @i % 2000 = 0
-        PRINT 'Created ' + CAST(@i AS NVARCHAR(10)) + ' orders...';
-    
-    SET @i = @i + 1;
-END
-GO
-
-PRINT 'CarvedRock database created successfully!';
-PRINT 'Customers: 5,000';
-PRINT 'Orders: 10,000';
-PRINT 'Products: 10';
+PRINT 'CarvedRock database created!';
+PRINT 'Customers: 100, Orders: 500, Products: 10';
