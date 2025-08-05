@@ -104,6 +104,14 @@ AS
 BEGIN
     DECLARE @sql NVARCHAR(100);
     
+    -- Validate the session ID is a number
+    IF @BlockingSessionID IS NULL OR @BlockingSessionID < 1
+    BEGIN
+        PRINT 'Error: Please provide a valid numeric session ID.';
+        PRINT 'Usage: EXEC sp_ResolveBlocking @BlockingSessionID = 55;';
+        RETURN;
+    END
+    
     -- Verify the session exists and is blocking
     IF EXISTS (
         SELECT 1 FROM sys.dm_exec_requests 
@@ -114,10 +122,25 @@ BEGIN
         SET @sql = 'KILL ' + CAST(@BlockingSessionID AS NVARCHAR(10));
         EXEC sp_executesql @sql;
         PRINT 'Blocking session ' + CAST(@BlockingSessionID AS NVARCHAR(10)) + ' has been terminated.';
+        PRINT 'The blocked session should now complete.';
     END
     ELSE
     BEGIN
         PRINT 'Session ' + CAST(@BlockingSessionID AS NVARCHAR(10)) + ' is not a blocking session or does not exist.';
+        
+        -- Show current blocking sessions to help
+        IF EXISTS (SELECT 1 FROM sys.dm_exec_requests WHERE blocking_session_id > 0)
+        BEGIN
+            PRINT '';
+            PRINT 'Current blocking sessions:';
+            SELECT DISTINCT blocking_session_id AS BlockingSessionID
+            FROM sys.dm_exec_requests 
+            WHERE blocking_session_id > 0;
+        END
+        ELSE
+        BEGIN
+            PRINT 'No blocking sessions found at this time.';
+        END
     END
 END;
 GO
