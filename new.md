@@ -525,6 +525,8 @@ Now you'll set up SQL Server Agent jobs for automated backups and maintenance, c
 
 In this section, you'll identify and fix index fragmentation, simulate and resolve blocking scenarios, and perform database integrity checks.
 
+**Note**: Index fragmentation is most visible in larger databases. With our small lab database, we'll simulate scenarios to demonstrate the concepts.
+
 1. First, check the current index fragmentation levels:
 
     ```sql
@@ -534,40 +536,49 @@ In this section, you'll identify and fix index fragmentation, simulate and resol
     EXEC sp_CheckIndexFragmentation;
     ```
 
-    **Expected Results**: 
-    - You should see a table showing indexes with fragmentation percentages
-    - The procedure will show sample data if no real fragmentation exists
-    - Look for indexes marked as needing 'REBUILD' (>30% fragmentation) or 'REORGANIZE' (10-30%)
-    
-    **Note**: Small lab databases may not show real fragmentation. The procedure provides sample data for learning purposes.
+    **What you're seeing**: 
+    - Small indexes (1-12 pages) showing high fragmentation percentages
+    - This is normal for tiny tables - fragmentation percentages can be misleading when page counts are low
+    - In production, you'd only worry about fragmentation on indexes with 1000+ pages
 
 2. Fix fragmented indexes:
 
     ```sql
+    -- Only rebuild/reorganize larger indexes
     EXEC sp_MaintainIndexes @FragmentationThreshold = 10;
     ```
 
-    Watch the Messages tab. You should see either:
-    - Messages about rebuilding/reorganizing specific indexes
-    - "No indexes found with fragmentation above 10%"
-    - "All indexes are already optimized"
+    **Expected output**:
+    ```
+    Rebuilding index: PK__Orders__C3905BAF on table: Orders (Fragmentation: 85.71%)
+    Rebuilding index: IX_Orders_OrderDate on table: Orders (Fragmentation: 50.00%)
+    Index maintenance completed. 2 indexes processed.
+    ```
     
-    The procedure will tell you exactly what it's doing.
+    **Reality check**: With such small tables (< 100 pages), fragmentation fixes may not actually change the percentages much. This is normal - SQL Server can't optimize tiny tables effectively.
 
-3. Verify fragmentation has been reduced:
+3. Verify the maintenance ran:
 
     ```sql
     EXEC sp_CheckIndexFragmentation;
     ```
 
-    All indexes should now show low fragmentation percentages (<10%).
-    
-    **Still empty results?** This is normal if:
-    - Your database has small tables (< 1000 pages)
-    - The indexes haven't been heavily modified
-    - The stored procedure filters out small indexes
-    
-    The important learning is understanding how to check and fix fragmentation when it occurs in production databases with larger tables.
+**Understanding Fragmentation in Small Databases**:
+
+The high fragmentation percentages you're seeing (85.71%, 50%, 33.33%) are misleading because:
+- **Page Count Too Low**: With only 1-12 pages, these percentages are statistically meaningless
+- **Mixed Extents**: SQL Server stores small tables in mixed extents, causing apparent "fragmentation"
+- **Rebuild Won't Help**: Tables this small can't be defragmented effectively
+
+**Real-World Context**:
+- In production, you'd only worry about indexes with 1000+ pages
+- A 7-page index at 85% fragmentation is not a performance issue
+- The rebuild operations run but don't change the structure because there's nowhere to move the pages
+
+**For Learning Purposes**: The procedures show you HOW to check and fix fragmentation, even though our lab database is too small to demonstrate real improvements. In a production database with millions of rows, you'd see:
+- Hundreds or thousands of pages per index
+- Fragmentation percentages that actually decrease after rebuild
+- Measurable performance improvements after maintenance
 
 4. Now, simulate a blocking scenario. Open a **new query window** (Window 1) and run:
 
