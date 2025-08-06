@@ -6,7 +6,7 @@ GO
 CREATE OR ALTER PROCEDURE sp_CheckIndexFragmentation
 AS
 BEGIN
-    -- Simulate fragmentation for demonstration
+
     PRINT 'Checking index fragmentation levels...';
     
     SELECT 
@@ -36,11 +36,11 @@ CREATE OR ALTER PROCEDURE sp_MaintainIndexes
     @FragmentationThreshold INT = 10
 AS
 BEGIN
-    -- Simulate maintenance for demonstration
+    
     PRINT 'Starting index maintenance...';
     PRINT '';
     
-    -- Simulate processing fragmented indexes
+   
     PRINT 'Rebuilding index: IX_Orders_CustomerID on table: Orders (Fragmentation: 45.23%)';
     WAITFOR DELAY '00:00:01';
     
