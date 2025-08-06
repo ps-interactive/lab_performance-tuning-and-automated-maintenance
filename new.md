@@ -1,3 +1,5 @@
+It might give an warning window that "line endings in the following file are inconsistent. Do you want to normalize it?". Just click ***Yes***.
+
 # Performance Tuning and Automated Maintenance for SQL Server
 
 ## Introduction
