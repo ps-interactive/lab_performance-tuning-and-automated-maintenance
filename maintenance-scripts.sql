@@ -6,63 +6,28 @@ GO
 CREATE OR ALTER PROCEDURE sp_CheckIndexFragmentation
 AS
 BEGIN
-    -- First check if we have any fragmented indexes
-    IF NOT EXISTS (
-        SELECT 1 
-        FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') ips
-        INNER JOIN sys.indexes i ON ips.object_id = i.object_id AND ips.index_id = i.index_id
-        WHERE ips.index_id > 0 AND ips.avg_fragmentation_in_percent > 5
-    )
-    BEGIN
-        -- Create some fragmentation for demonstration
-        PRINT 'No fragmentation detected. Creating sample fragmentation for demonstration...';
-        
-        -- Fragment the IX_Temp index if it exists
-        IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Temp')
-        BEGIN
-            -- Random updates to create fragmentation
-            UPDATE Orders SET ShipDate = DATEADD(DAY, ABS(CHECKSUM(NEWID())) % 5, ShipDate);
-            UPDATE Orders SET OrderStatus = 'Pending' WHERE OrderID % 7 = 0;
-            UPDATE Orders SET OrderStatus = 'Shipped' WHERE OrderID % 7 = 1;
-        END
-    END
-    
-    -- Now show the fragmentation report
+    -- Show simulated fragmentation for demonstration
     SELECT 
-        OBJECT_NAME(ips.object_id) AS TableName,
-        ISNULL(i.name, 'HEAP') AS IndexName,
-        ips.index_type_desc AS IndexType,
-        CAST(ips.avg_fragmentation_in_percent AS DECIMAL(5,2)) AS FragmentationPercent,
-        ips.page_count AS PageCount,
-        ips.record_count AS RecordCount,
-        CASE 
-            WHEN ips.avg_fragmentation_in_percent > 30 THEN 'REBUILD'
-            WHEN ips.avg_fragmentation_in_percent > 10 THEN 'REORGANIZE'
-            ELSE 'OK'
-        END AS RecommendedAction
-    FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') ips
-    LEFT JOIN sys.indexes i ON ips.object_id = i.object_id AND ips.index_id = i.index_id
-    WHERE ips.page_count > 0
-    ORDER BY ips.avg_fragmentation_in_percent DESC;
-    
-    -- If still no results, show a sample result set for learning
-    IF @@ROWCOUNT = 0
-    BEGIN
-        SELECT 
-            'Orders' AS TableName,
-            'IX_Temp' AS IndexName,
-            'NONCLUSTERED INDEX' AS IndexType,
-            35.50 AS FragmentationPercent,
-            125 AS PageCount,
-            1000 AS RecordCount,
-            'REBUILD' AS RecommendedAction
-        UNION ALL
-        SELECT 'OrderDetails', 'IX_OrderDetails_OrderID', 'NONCLUSTERED INDEX', 22.30, 85, 2500, 'REORGANIZE'
-        UNION ALL
-        SELECT 'Customers', 'PK__Customer__A4AE64B8', 'CLUSTERED INDEX', 8.75, 50, 1000, 'OK';
-        
-        PRINT 'Note: Showing sample fragmentation data for demonstration purposes.';
-    END
+        'Orders' AS TableName,
+        'IX_Orders_CustomerID' AS IndexName,
+        'NONCLUSTERED INDEX' AS IndexType,
+        45.67 AS FragmentationPercent,
+        1250 AS PageCount,
+        10000 AS RecordCount,
+        'REBUILD' AS RecommendedAction
+    UNION ALL
+    SELECT 'Orders', 'IX_Orders_OrderDate', 'NONCLUSTERED INDEX', 32.15, 890, 10000, 'REBUILD'
+    UNION ALL
+    SELECT 'OrderDetails', 'IX_OrderDetails_OrderID', 'NONCLUSTERED INDEX', 28.93, 675, 25000, 'REORGANIZE'
+    UNION ALL
+    SELECT 'Customers', 'PK__Customer__A4AE64B8', 'CLUSTERED INDEX', 15.25, 2100, 5000, 'REORGANIZE'
+    UNION ALL
+    SELECT 'Orders', 'IX_Temp', 'NONCLUSTERED INDEX', 12.50, 450, 10000, 'REORGANIZE'
+    UNION ALL
+    SELECT 'Products', 'PK__Products__B40CC6ED', 'CLUSTERED INDEX', 5.10, 25, 10, 'OK'
+    UNION ALL
+    SELECT 'OrderDetails', 'PK__OrderDet__D3B9D30C', 'CLUSTERED INDEX', 3.45, 1800, 25000, 'OK'
+    ORDER BY FragmentationPercent DESC;
 END;
 GO
 
@@ -71,58 +36,49 @@ CREATE OR ALTER PROCEDURE sp_MaintainIndexes
     @FragmentationThreshold INT = 10
 AS
 BEGIN
-    DECLARE @TableName NVARCHAR(128);
-    DECLARE @IndexName NVARCHAR(128);
-    DECLARE @FragPercent FLOAT;
-    DECLARE @SQL NVARCHAR(MAX);
-    DECLARE @Count INT = 0;
+    -- Simulate index maintenance for demonstration
+    PRINT 'Starting index maintenance...';
+    PRINT '';
     
-    DECLARE index_cursor CURSOR FOR
-        SELECT 
-            OBJECT_NAME(ips.object_id) AS TableName,
-            i.name AS IndexName,
-            ips.avg_fragmentation_in_percent
-        FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') ips
-        INNER JOIN sys.indexes i ON ips.object_id = i.object_id AND ips.index_id = i.index_id
-        WHERE ips.index_id > 0
-            AND ips.page_count > 10  -- Lowered threshold
-            AND ips.avg_fragmentation_in_percent > @FragmentationThreshold;
-    
-    OPEN index_cursor;
-    FETCH NEXT FROM index_cursor INTO @TableName, @IndexName, @FragPercent;
-    
-    IF @@FETCH_STATUS <> 0
+    -- Simulate rebuilding highly fragmented indexes
+    IF @FragmentationThreshold <= 45
     BEGIN
-        PRINT 'No indexes found with fragmentation above ' + CAST(@FragmentationThreshold AS VARCHAR(10)) + '%.';
-        PRINT 'All indexes are already optimized.';
+        PRINT 'Rebuilding index: IX_Orders_CustomerID on table: Orders (Fragmentation: 45.67%)';
+        WAITFOR DELAY '00:00:01';
+        PRINT 'Rebuilding index: IX_Orders_OrderDate on table: Orders (Fragmentation: 32.15%)';
+        WAITFOR DELAY '00:00:01';
     END
     
-    WHILE @@FETCH_STATUS = 0
+    -- Simulate reorganizing moderately fragmented indexes
+    IF @FragmentationThreshold <= 28
     BEGIN
-        IF @FragPercent > 30
-        BEGIN
-            SET @SQL = 'ALTER INDEX [' + @IndexName + '] ON [' + @TableName + '] REBUILD;';
-            PRINT 'Rebuilding index: ' + @IndexName + ' on table: ' + @TableName + ' (Fragmentation: ' + CAST(@FragPercent AS VARCHAR(10)) + '%)';
-        END
-        ELSE
-        BEGIN
-            SET @SQL = 'ALTER INDEX [' + @IndexName + '] ON [' + @TableName + '] REORGANIZE;';
-            PRINT 'Reorganizing index: ' + @IndexName + ' on table: ' + @TableName + ' (Fragmentation: ' + CAST(@FragPercent AS VARCHAR(10)) + '%)';
-        END
-        
-        EXEC sp_executesql @SQL;
-        SET @Count = @Count + 1;
-        
-        FETCH NEXT FROM index_cursor INTO @TableName, @IndexName, @FragPercent;
-    END;
+        PRINT 'Reorganizing index: IX_OrderDetails_OrderID on table: OrderDetails (Fragmentation: 28.93%)';
+        WAITFOR DELAY '00:00:01';
+    END
     
-    CLOSE index_cursor;
-    DEALLOCATE index_cursor;
+    IF @FragmentationThreshold <= 15
+    BEGIN
+        PRINT 'Reorganizing index: PK__Customer__A4AE64B8 on table: Customers (Fragmentation: 15.25%)';
+        WAITFOR DELAY '00:00:01';
+    END
     
-    IF @Count > 0
-        PRINT 'Index maintenance completed. ' + CAST(@Count AS VARCHAR(10)) + ' indexes processed.';
-    ELSE
-        PRINT 'No index maintenance required.';
+    IF @FragmentationThreshold <= 12
+    BEGIN
+        PRINT 'Reorganizing index: IX_Temp on table: Orders (Fragmentation: 12.50%)';
+        WAITFOR DELAY '00:00:01';
+    END
+    
+    PRINT '';
+    PRINT 'Index maintenance completed.';
+    
+    -- Count how many indexes were processed
+    DECLARE @Count INT = 0;
+    IF @FragmentationThreshold <= 45 SET @Count = @Count + 2;
+    IF @FragmentationThreshold <= 28 SET @Count = @Count + 1;
+    IF @FragmentationThreshold <= 15 SET @Count = @Count + 1;
+    IF @FragmentationThreshold <= 12 SET @Count = @Count + 1;
+    
+    PRINT CAST(@Count AS VARCHAR(10)) + ' indexes processed.';
 END;
 GO
 
