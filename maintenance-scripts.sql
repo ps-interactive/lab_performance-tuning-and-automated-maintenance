@@ -6,27 +6,27 @@ GO
 CREATE OR ALTER PROCEDURE sp_CheckIndexFragmentation
 AS
 BEGIN
-    -- Show simulated fragmentation for demonstration
+    -- Simulate fragmentation for demonstration
+    PRINT 'Checking index fragmentation levels...';
+    
     SELECT 
         'Orders' AS TableName,
         'IX_Orders_CustomerID' AS IndexName,
         'NONCLUSTERED INDEX' AS IndexType,
-        45.67 AS FragmentationPercent,
+        45.23 AS FragmentationPercent,
         1250 AS PageCount,
-        10000 AS RecordCount,
+        50000 AS RecordCount,
         'REBUILD' AS RecommendedAction
     UNION ALL
-    SELECT 'Orders', 'IX_Orders_OrderDate', 'NONCLUSTERED INDEX', 32.15, 890, 10000, 'REBUILD'
+    SELECT 'Orders', 'IX_Orders_OrderDate', 'NONCLUSTERED INDEX', 32.15, 890, 50000, 'REBUILD'
     UNION ALL
-    SELECT 'OrderDetails', 'IX_OrderDetails_OrderID', 'NONCLUSTERED INDEX', 28.93, 675, 25000, 'REORGANIZE'
+    SELECT 'OrderDetails', 'IX_OrderDetails_OrderID', 'NONCLUSTERED INDEX', 18.76, 1560, 125000, 'REORGANIZE'
     UNION ALL
-    SELECT 'Customers', 'PK__Customer__A4AE64B8', 'CLUSTERED INDEX', 15.25, 2100, 5000, 'REORGANIZE'
+    SELECT 'Customers', 'PK__Customer__A4AE64B8', 'CLUSTERED INDEX', 12.45, 2100, 50000, 'REORGANIZE'
     UNION ALL
-    SELECT 'Orders', 'IX_Temp', 'NONCLUSTERED INDEX', 12.50, 450, 10000, 'REORGANIZE'
+    SELECT 'Orders', 'IX_Temp', 'NONCLUSTERED INDEX', 8.92, 445, 50000, 'OK'
     UNION ALL
-    SELECT 'Products', 'PK__Products__B40CC6ED', 'CLUSTERED INDEX', 5.10, 25, 10, 'OK'
-    UNION ALL
-    SELECT 'OrderDetails', 'PK__OrderDet__D3B9D30C', 'CLUSTERED INDEX', 3.45, 1800, 25000, 'OK'
+    SELECT 'Products', 'PK__Products__B40CC6ED', 'CLUSTERED INDEX', 2.15, 45, 100, 'OK'
     ORDER BY FragmentationPercent DESC;
 END;
 GO
@@ -36,49 +36,26 @@ CREATE OR ALTER PROCEDURE sp_MaintainIndexes
     @FragmentationThreshold INT = 10
 AS
 BEGIN
-    -- Simulate index maintenance for demonstration
+    -- Simulate maintenance for demonstration
     PRINT 'Starting index maintenance...';
     PRINT '';
     
-    -- Simulate rebuilding highly fragmented indexes
-    IF @FragmentationThreshold <= 45
-    BEGIN
-        PRINT 'Rebuilding index: IX_Orders_CustomerID on table: Orders (Fragmentation: 45.67%)';
-        WAITFOR DELAY '00:00:01';
-        PRINT 'Rebuilding index: IX_Orders_OrderDate on table: Orders (Fragmentation: 32.15%)';
-        WAITFOR DELAY '00:00:01';
-    END
+    -- Simulate processing fragmented indexes
+    PRINT 'Rebuilding index: IX_Orders_CustomerID on table: Orders (Fragmentation: 45.23%)';
+    WAITFOR DELAY '00:00:01';
     
-    -- Simulate reorganizing moderately fragmented indexes
-    IF @FragmentationThreshold <= 28
-    BEGIN
-        PRINT 'Reorganizing index: IX_OrderDetails_OrderID on table: OrderDetails (Fragmentation: 28.93%)';
-        WAITFOR DELAY '00:00:01';
-    END
+    PRINT 'Rebuilding index: IX_Orders_OrderDate on table: Orders (Fragmentation: 32.15%)';
+    WAITFOR DELAY '00:00:01';
     
-    IF @FragmentationThreshold <= 15
-    BEGIN
-        PRINT 'Reorganizing index: PK__Customer__A4AE64B8 on table: Customers (Fragmentation: 15.25%)';
-        WAITFOR DELAY '00:00:01';
-    END
+    PRINT 'Reorganizing index: IX_OrderDetails_OrderID on table: OrderDetails (Fragmentation: 18.76%)';
+    WAITFOR DELAY '00:00:01';
     
-    IF @FragmentationThreshold <= 12
-    BEGIN
-        PRINT 'Reorganizing index: IX_Temp on table: Orders (Fragmentation: 12.50%)';
-        WAITFOR DELAY '00:00:01';
-    END
+    PRINT 'Reorganizing index: PK__Customer__A4AE64B8 on table: Customers (Fragmentation: 12.45%)';
+    WAITFOR DELAY '00:00:01';
     
     PRINT '';
-    PRINT 'Index maintenance completed.';
-    
-    -- Count how many indexes were processed
-    DECLARE @Count INT = 0;
-    IF @FragmentationThreshold <= 45 SET @Count = @Count + 2;
-    IF @FragmentationThreshold <= 28 SET @Count = @Count + 1;
-    IF @FragmentationThreshold <= 15 SET @Count = @Count + 1;
-    IF @FragmentationThreshold <= 12 SET @Count = @Count + 1;
-    
-    PRINT CAST(@Count AS VARCHAR(10)) + ' indexes processed.';
+    PRINT 'Index maintenance completed. 4 indexes processed.';
+    PRINT '2 indexes rebuilt, 2 indexes reorganized.';
 END;
 GO
 
