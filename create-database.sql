@@ -17,7 +17,8 @@ CREATE TABLE Customers (
     CustomerID INT IDENTITY(1,1) PRIMARY KEY,
     FirstName NVARCHAR(50),
     LastName NVARCHAR(50),
-    Email NVARCHAR(100)
+    Email NVARCHAR(100),
+    Phone NVARCHAR(20)  -- Added this column
 );
 
 CREATE TABLE Products (
@@ -74,7 +75,8 @@ BEGIN
     INSERT INTO Customers VALUES 
         ('First' + CAST(@i AS NVARCHAR(10)), 
          'Last' + CAST(@i AS NVARCHAR(10)), 
-         'customer' + CAST(@i AS NVARCHAR(10)) + '@example.com');
+         'customer' + CAST(@i AS NVARCHAR(10)) + '@example.com',
+         '555-' + RIGHT('0000' + CAST(@i AS NVARCHAR(10)), 4));  -- Added phone
     SET @i = @i + 1;
 END
 
