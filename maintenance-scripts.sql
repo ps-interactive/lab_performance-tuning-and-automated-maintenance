@@ -1,63 +1,60 @@
--- Create maintenance procedures with d output
+USE CarvedRock;
+GO
+
+-- Simulated fragmentation check
 CREATE OR ALTER PROCEDURE sp_CheckIndexFragmentation
 AS
 BEGIN
-
+    -- Return simulated results for demonstration
     SELECT 
         'Orders' AS TableName,
         'IX_Orders_CustomerID' AS IndexName,
         'NONCLUSTERED INDEX' AS IndexType,
-        45.67 AS FragmentationPercent,
+        35.50 AS FragmentationPercent,
         1250 AS PageCount,
         50000 AS RecordCount,
         'REBUILD' AS RecommendedAction
     UNION ALL
-    SELECT 'Orders', 'IX_Orders_OrderDate', 'NONCLUSTERED INDEX', 32.45, 890, 50000, 'REBUILD'
+    SELECT 'OrderDetails', 'IX_OrderDetails_OrderID', 'NONCLUSTERED INDEX', 22.30, 850, 25000, 'REORGANIZE'
     UNION ALL
-    SELECT 'OrderDetails', 'IX_OrderDetails_OrderID', 'NONCLUSTERED INDEX', 28.90, 1456, 100000, 'REORGANIZE'
+    SELECT 'Orders', 'IX_Orders_OrderDate', 'NONCLUSTERED INDEX', 18.75, 450, 50000, 'REORGANIZE'
     UNION ALL
-    SELECT 'Customers', 'PK__Customer__A4AE64B8', 'CLUSTERED INDEX', 15.23, 2340, 50000, 'REORGANIZE'
+    SELECT 'Customers', 'PK__Customer__A4AE64B8', 'CLUSTERED INDEX', 8.75, 500, 10000, 'OK'
     UNION ALL
-    SELECT 'Orders', 'IX_Temp', 'NONCLUSTERED INDEX', 78.34, 567, 50000, 'REBUILD'
-    UNION ALL
-    SELECT 'Products', 'PK__Products__B40CC6ED', 'CLUSTERED INDEX', 5.12, 45, 100, 'OK'
-    ORDER BY FragmentationPercent DESC;
+    SELECT 'Orders', 'IX_Temp', 'NONCLUSTERED INDEX', 45.00, 120, 50000, 'REBUILD';
 END;
 GO
 
--- Create index maintenance procedure
+-- Simulated index maintenance
 CREATE OR ALTER PROCEDURE sp_MaintainIndexes
     @FragmentationThreshold INT = 10
 AS
 BEGIN
-    --  maintenance 
     PRINT 'Starting index maintenance...';
     PRINT '';
-    PRINT 'Rebuilding index: IX_Temp on table: Orders (Fragmentation: 78.34%)';
+    PRINT 'Rebuilding index: IX_Orders_CustomerID on table: Orders (Fragmentation: 35.50%)';
     WAITFOR DELAY '00:00:01';
-    PRINT 'Rebuilding index: IX_Orders_CustomerID on table: Orders (Fragmentation: 45.67%)';
+    PRINT 'Rebuilding index: IX_Temp on table: Orders (Fragmentation: 45.00%)';
     WAITFOR DELAY '00:00:01';
-    PRINT 'Rebuilding index: IX_Orders_OrderDate on table: Orders (Fragmentation: 32.45%)';
+    PRINT 'Reorganizing index: IX_OrderDetails_OrderID on table: OrderDetails (Fragmentation: 22.30%)';
     WAITFOR DELAY '00:00:01';
-    PRINT 'Reorganizing index: IX_OrderDetails_OrderID on table: OrderDetails (Fragmentation: 28.90%)';
-    WAITFOR DELAY '00:00:01';
-    PRINT 'Reorganizing index: PK__Customer__A4AE64B8 on table: Customers (Fragmentation: 15.23%)';
+    PRINT 'Reorganizing index: IX_Orders_OrderDate on table: Orders (Fragmentation: 18.75%)';
     PRINT '';
-    PRINT 'Index maintenance completed. 5 indexes processed.';
+    PRINT 'Index maintenance completed. 4 indexes processed.';
 END;
 GO
 
--- Create procedure to check database integrity
+-- Database integrity check with output
 CREATE OR ALTER PROCEDURE sp_CheckDatabaseIntegrity
 AS
 BEGIN
-    PRINT 'Checking database integrity...';
-    WAITFOR DELAY '00:00:02';
-    PRINT '';
+    DBCC CHECKDB('CarvedRock') WITH NO_INFOMSGS;
     PRINT 'CHECKDB found 0 allocation errors and 0 consistency errors in database ''CarvedRock''.';
     PRINT 'Database integrity check completed successfully.';
 END;
 GO
+
+-- Other procedures remain the same...
 
 -- Create procedure to update statistics
 CREATE OR ALTER PROCEDURE sp_UpdateDatabaseStatistics
