@@ -1,4 +1,4 @@
--- Create CarvedRock Database
+-- Create CarvedRock Database (Fast Version - 30 seconds)
 USE master;
 GO
 
@@ -70,14 +70,7 @@ CREATE TABLE InventoryTransactions (
     Notes NVARCHAR(500)
 );
 
-CREATE TABLE MaintenanceHistory (
-    MaintenanceID INT IDENTITY(1,1) PRIMARY KEY,
-    MaintenanceType NVARCHAR(50),
-    StartTime DATETIME,
-    EndTime DATETIME,
-    Status NVARCHAR(20),
-    Details NVARCHAR(MAX)
-);
+-- Don't create MaintenanceHistory here - let maintenance script do it
 
 -- Insert products
 INSERT INTO Products (ProductName, Category, Price, StockQuantity, ReorderLevel)
@@ -93,7 +86,7 @@ VALUES
     ('Trekking Poles', 'Hiking', 79.99, 80, 16),
     ('Headlamp', 'Accessories', 34.99, 150, 30);
 
--- Generate only 100 customers for quick setup
+-- Generate only 100 customers
 DECLARE @i INT = 1;
 WHILE @i <= 100
 BEGIN
@@ -109,7 +102,7 @@ BEGIN
     SET @i = @i + 1;
 END
 
--- Generate only 200 orders
+-- Generate 200 orders
 SET @i = 1;
 WHILE @i <= 200
 BEGIN
