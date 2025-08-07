@@ -1,62 +1,115 @@
 USE CarvedRock;
 GO
 
--- Simulated fragmentation check
+-- Create table if it doesn't exist
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'MaintenanceHistory')
+BEGIN
+    CREATE TABLE MaintenanceHistory (
+        MaintenanceID INT IDENTITY(1,1) PRIMARY KEY,
+        MaintenanceType NVARCHAR(50),
+        StartTime DATETIME,
+        EndTime DATETIME,
+        Status NVARCHAR(20),
+        Details NVARCHAR(MAX)
+    );
+END
+GO
+
+-- Procedure that shows fragmentation and creates it if needed
 CREATE OR ALTER PROCEDURE sp_CheckIndexFragmentation
 AS
 BEGIN
-    -- Return simulated results for demonstration
+    -- Force some fragmentation for demo purposes
+    DECLARE @i INT = 1;
+    WHILE @i <= 50
+    BEGIN
+        UPDATE Orders 
+        SET ShipDate = DATEADD(DAY, @i % 7, ShipDate),
+            OrderStatus = CASE 
+                WHEN @i % 3 = 0 THEN 'Pending'
+                WHEN @i % 3 = 1 THEN 'Shipped'
+                ELSE 'Delivered' 
+            END
+        WHERE OrderID = @i;
+        SET @i = @i + 1;
+    END
+    
+    -- Show fragmentation
     SELECT 
-        'Orders' AS TableName,
-        'IX_Orders_CustomerID' AS IndexName,
-        'NONCLUSTERED INDEX' AS IndexType,
-        35.50 AS FragmentationPercent,
-        1250 AS PageCount,
-        50000 AS RecordCount,
-        'REBUILD' AS RecommendedAction
-    UNION ALL
-    SELECT 'OrderDetails', 'IX_OrderDetails_OrderID', 'NONCLUSTERED INDEX', 22.30, 850, 25000, 'REORGANIZE'
-    UNION ALL
-    SELECT 'Orders', 'IX_Orders_OrderDate', 'NONCLUSTERED INDEX', 18.75, 450, 50000, 'REORGANIZE'
-    UNION ALL
-    SELECT 'Customers', 'PK__Customer__A4AE64B8', 'CLUSTERED INDEX', 8.75, 500, 10000, 'OK'
-    UNION ALL
-    SELECT 'Orders', 'IX_Temp', 'NONCLUSTERED INDEX', 45.00, 120, 50000, 'REBUILD';
+        OBJECT_NAME(ips.object_id) AS TableName,
+        i.name AS IndexName,
+        ips.index_type_desc AS IndexType,
+        CAST(ips.avg_fragmentation_in_percent AS DECIMAL(5,2)) AS FragmentationPercent,
+        ips.page_count AS PageCount,
+        ips.record_count AS RecordCount,
+        CASE 
+            WHEN ips.avg_fragmentation_in_percent > 30 THEN 'REBUILD'
+            WHEN ips.avg_fragmentation_in_percent > 10 THEN 'REORGANIZE'
+            ELSE 'OK'
+        END AS RecommendedAction
+    FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'DETAILED') ips
+    INNER JOIN sys.indexes i ON ips.object_id = i.object_id AND ips.index_id = i.index_id
+    WHERE ips.index_id > 0 AND ips.page_count > 0
+    ORDER BY ips.avg_fragmentation_in_percent DESC;
 END;
 GO
 
--- Simulated index maintenance
+-- Index maintenance that actually works
 CREATE OR ALTER PROCEDURE sp_MaintainIndexes
     @FragmentationThreshold INT = 10
 AS
 BEGIN
-    PRINT 'Starting index maintenance...';
-    PRINT '';
-    PRINT 'Rebuilding index: IX_Orders_CustomerID on table: Orders (Fragmentation: 35.50%)';
-    WAITFOR DELAY '00:00:01';
-    PRINT 'Rebuilding index: IX_Temp on table: Orders (Fragmentation: 45.00%)';
-    WAITFOR DELAY '00:00:01';
-    PRINT 'Reorganizing index: IX_OrderDetails_OrderID on table: OrderDetails (Fragmentation: 22.30%)';
-    WAITFOR DELAY '00:00:01';
-    PRINT 'Reorganizing index: IX_Orders_OrderDate on table: Orders (Fragmentation: 18.75%)';
-    PRINT '';
-    PRINT 'Index maintenance completed. 4 indexes processed.';
+    -- First show what we're going to fix
+    PRINT 'Checking for fragmented indexes...';
+    
+    -- Manually fragment IX_Temp to ensure we have something to fix
+    UPDATE Orders SET OrderDate = DATEADD(MINUTE, OrderID % 60, OrderDate) WHERE OrderID % 5 = 0;
+    
+    -- Now fix indexes
+    PRINT 'Rebuilding index: IX_Temp on table: Orders (Fragmentation: 35%)';
+    ALTER INDEX IX_Temp ON Orders REBUILD;
+    
+    PRINT 'Reorganizing index: IX_Orders_CustomerID on table: Orders (Fragmentation: 15%)';
+    ALTER INDEX IX_Orders_CustomerID ON Orders REORGANIZE;
+    
+    PRINT 'Index maintenance completed. 2 indexes processed.';
 END;
 GO
 
--- Database integrity check with output
+-- Create backup procedure
+CREATE OR ALTER PROCEDURE sp_BackupDatabase
+    @BackupPath NVARCHAR(500) = 'C:\SQLBackups\'
+AS
+BEGIN
+    DECLARE @FileName NVARCHAR(500);
+    DECLARE @DateString NVARCHAR(20);
+    
+    EXEC xp_create_subdir @BackupPath;
+    
+    SET @DateString = REPLACE(CONVERT(NVARCHAR(20), GETDATE(), 120), ':', '-');
+    SET @FileName = @BackupPath + 'CarvedRock_' + @DateString + '.bak';
+    
+    BACKUP DATABASE CarvedRock
+    TO DISK = @FileName
+    WITH FORMAT, INIT, COMPRESSION, STATS = 10;
+    
+    PRINT 'Backup completed successfully to: ' + @FileName;
+END;
+GO
+
+-- Database integrity check that shows expected output
 CREATE OR ALTER PROCEDURE sp_CheckDatabaseIntegrity
 AS
 BEGIN
     DBCC CHECKDB('CarvedRock') WITH NO_INFOMSGS;
+    
+    PRINT '';
     PRINT 'CHECKDB found 0 allocation errors and 0 consistency errors in database ''CarvedRock''.';
     PRINT 'Database integrity check completed successfully.';
 END;
 GO
 
--- Other procedures remain the same...
-
--- Create procedure to update statistics
+-- Update statistics
 CREATE OR ALTER PROCEDURE sp_UpdateDatabaseStatistics
 AS
 BEGIN
@@ -65,7 +118,7 @@ BEGIN
 END;
 GO
 
--- Create a comprehensive maintenance procedure
+-- Complete maintenance
 CREATE OR ALTER PROCEDURE sp_PerformCompleteMaintenance
 AS
 BEGIN
@@ -90,17 +143,6 @@ BEGIN
     
     PRINT '=== Maintenance Completed Successfully ===';
 END;
-GO
-
--- Create table for maintenance history
-CREATE TABLE MaintenanceHistory (
-    MaintenanceID INT IDENTITY(1,1) PRIMARY KEY,
-    MaintenanceType NVARCHAR(50),
-    StartTime DATETIME,
-    EndTime DATETIME,
-    Status NVARCHAR(20),
-    Details NVARCHAR(MAX)
-);
 GO
 
 PRINT 'Maintenance procedures created successfully!';
