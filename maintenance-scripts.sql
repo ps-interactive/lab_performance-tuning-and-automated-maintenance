@@ -59,4 +59,51 @@ BEGIN
 END;
 GO
 
--- Other procedures remain the same...
+-- Create procedure to update statistics
+CREATE OR ALTER PROCEDURE sp_UpdateDatabaseStatistics
+AS
+BEGIN
+    EXEC sp_updatestats;
+    PRINT 'Statistics update completed.';
+END;
+GO
+
+-- Create a comprehensive maintenance procedure
+CREATE OR ALTER PROCEDURE sp_PerformCompleteMaintenance
+AS
+BEGIN
+    PRINT '=== Starting Complete Database Maintenance ===';
+    PRINT '';
+    
+    PRINT '1. Checking database integrity...';
+    EXEC sp_CheckDatabaseIntegrity;
+    PRINT '';
+    
+    PRINT '2. Updating statistics...';
+    EXEC sp_UpdateDatabaseStatistics;
+    PRINT '';
+    
+    PRINT '3. Maintaining indexes...';
+    EXEC sp_MaintainIndexes;
+    PRINT '';
+    
+    PRINT '4. Performing backup...';
+    EXEC sp_BackupDatabase;
+    PRINT '';
+    
+    PRINT '=== Maintenance Completed Successfully ===';
+END;
+GO
+
+-- Create table for maintenance history
+CREATE TABLE MaintenanceHistory (
+    MaintenanceID INT IDENTITY(1,1) PRIMARY KEY,
+    MaintenanceType NVARCHAR(50),
+    StartTime DATETIME,
+    EndTime DATETIME,
+    Status NVARCHAR(20),
+    Details NVARCHAR(MAX)
+);
+GO
+
+PRINT 'Maintenance procedures created successfully!';
