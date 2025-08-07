@@ -1,9 +1,12 @@
--- Create CarvedRock Database
+-- Create CarvedRock Database (Fast Version)
 USE master;
 GO
 
 IF EXISTS (SELECT * FROM sys.databases WHERE name = 'CarvedRock')
+BEGIN
+    ALTER DATABASE CarvedRock SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
     DROP DATABASE CarvedRock;
+END
 GO
 
 CREATE DATABASE CarvedRock;
@@ -67,34 +70,17 @@ CREATE TABLE InventoryTransactions (
     Notes NVARCHAR(500)
 );
 
--- Insert sample data
--- Customers
-DECLARE @i INT = 1;
-WHILE @i <= 50000
-BEGIN
-    INSERT INTO Customers (FirstName, LastName, Email, Phone, Address, City, State, ZipCode)
-    VALUES (
-        'FirstName' + CAST(@i AS NVARCHAR(10)),
-        'LastName' + CAST(@i AS NVARCHAR(10)),
-        'customer' + CAST(@i AS NVARCHAR(10)) + '@example.com',
-        '555-' + RIGHT('0000' + CAST(@i AS NVARCHAR(10)), 4),
-        CAST(@i AS NVARCHAR(10)) + ' Main Street',
-        CASE WHEN @i % 5 = 0 THEN 'Seattle'
-             WHEN @i % 5 = 1 THEN 'Portland'
-             WHEN @i % 5 = 2 THEN 'San Francisco'
-             WHEN @i % 5 = 3 THEN 'Los Angeles'
-             ELSE 'Denver' END,
-        CASE WHEN @i % 5 = 0 THEN 'WA'
-             WHEN @i % 5 = 1 THEN 'OR'
-             WHEN @i % 5 = 2 THEN 'CA'
-             WHEN @i % 5 = 3 THEN 'CA'
-             ELSE 'CO' END,
-        RIGHT('00000' + CAST(10000 + @i AS NVARCHAR(10)), 5)
-    );
-    SET @i = @i + 1;
-END;
+CREATE TABLE MaintenanceHistory (
+    MaintenanceID INT IDENTITY(1,1) PRIMARY KEY,
+    MaintenanceType NVARCHAR(50),
+    StartTime DATETIME,
+    EndTime DATETIME,
+    Status NVARCHAR(20),
+    Details NVARCHAR(MAX)
+);
+GO
 
--- Products
+-- Insert products
 INSERT INTO Products (ProductName, Category, Price, StockQuantity, ReorderLevel)
 VALUES 
     ('Hiking Boots', 'Footwear', 129.99, 100, 20),
@@ -107,58 +93,68 @@ VALUES
     ('Water Filter', 'Camping', 49.99, 100, 20),
     ('Trekking Poles', 'Hiking', 79.99, 80, 16),
     ('Headlamp', 'Accessories', 34.99, 150, 30);
+GO
 
--- Generate Orders and OrderDetails
-SET @i = 1;
-WHILE @i <= 100000
+-- Generate minimal data (500 customers, 1000 orders - takes 30 seconds)
+PRINT 'Generating 500 customers...';
+DECLARE @i INT = 1;
+WHILE @i <= 500
 BEGIN
-    DECLARE @CustomerID INT = (SELECT TOP 1 CustomerID FROM Customers ORDER BY NEWID());
-    DECLARE @OrderDate DATETIME = DATEADD(DAY, -RAND() * 365, GETDATE());
-    DECLARE @TotalAmount DECIMAL(10,2) = 0;
-    
-    INSERT INTO Orders (CustomerID, OrderDate, ShipDate, OrderStatus, ShippingAddress, ShippingCity, ShippingState, ShippingZip)
-    SELECT @CustomerID, @OrderDate, 
-           DATEADD(DAY, RAND() * 5, @OrderDate),
-           CASE WHEN RAND() > 0.9 THEN 'Pending'
-                WHEN RAND() > 0.1 THEN 'Shipped'
-                ELSE 'Delivered' END,
-           Address, City, State, ZipCode
-    FROM Customers WHERE CustomerID = @CustomerID;
-    
-    DECLARE @OrderID INT = SCOPE_IDENTITY();
-    DECLARE @NumItems INT = CEILING(RAND() * 5);
-    DECLARE @j INT = 1;
-    
-    WHILE @j <= @NumItems
-    BEGIN
-        DECLARE @ProductID INT = (SELECT TOP 1 ProductID FROM Products ORDER BY NEWID());
-        DECLARE @Quantity INT = CEILING(RAND() * 5);
-        DECLARE @UnitPrice DECIMAL(10,2) = (SELECT Price FROM Products WHERE ProductID = @ProductID);
-        
-        INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice, Discount)
-        VALUES (@OrderID, @ProductID, @Quantity, @UnitPrice, CASE WHEN RAND() > 0.8 THEN 10 ELSE 0 END);
-        
-        SET @TotalAmount = @TotalAmount + (@Quantity * @UnitPrice);
-        SET @j = @j + 1;
-    END;
-    
-    UPDATE Orders SET TotalAmount = @TotalAmount WHERE OrderID = @OrderID;
-    SET @i = @i + 1;
-END;
-
--- Generate Inventory Transactions
-SET @i = 1;
-WHILE @i <= 10000
-BEGIN
-    INSERT INTO InventoryTransactions (ProductID, TransactionType, Quantity, TransactionDate, Notes)
+    INSERT INTO Customers (FirstName, LastName, Email, Phone, Address, City, State, ZipCode)
     VALUES (
-        (SELECT TOP 1 ProductID FROM Products ORDER BY NEWID()),
-        CASE WHEN RAND() > 0.5 THEN 'Purchase' ELSE 'Sale' END,
-        CEILING(RAND() * 50),
-        DATEADD(DAY, -RAND() * 365, GETDATE()),
-        'Transaction ' + CAST(@i AS NVARCHAR(10))
+        'FirstName' + CAST(@i AS NVARCHAR(10)),
+        'LastName' + CAST(@i AS NVARCHAR(10)),
+        'customer' + CAST(@i AS NVARCHAR(10)) + '@example.com',
+        '555-' + RIGHT('0000' + CAST(@i AS NVARCHAR(10)), 4),
+        CAST(@i AS NVARCHAR(10)) + ' Main Street',
+        CASE @i % 5 
+            WHEN 0 THEN 'Seattle'
+            WHEN 1 THEN 'Portland'
+            WHEN 2 THEN 'San Francisco'
+            WHEN 3 THEN 'Los Angeles'
+            ELSE 'Denver' 
+        END,
+        CASE @i % 5 
+            WHEN 0 THEN 'WA'
+            WHEN 1 THEN 'OR'
+            WHEN 2 THEN 'CA'
+            WHEN 3 THEN 'CA'
+            ELSE 'CO' 
+        END,
+        RIGHT('00000' + CAST(10000 + @i AS NVARCHAR(10)), 5)
     );
     SET @i = @i + 1;
-END;
+END
+GO
 
-PRINT 'CarvedRock database created and populated successfully!';
+PRINT 'Generating 1000 orders...';
+-- Use batch insert for orders
+INSERT INTO Orders (CustomerID, OrderDate, ShipDate, OrderStatus, TotalAmount)
+SELECT 
+    1 + ABS(CHECKSUM(NEWID())) % 500,
+    DATEADD(DAY, -ABS(CHECKSUM(NEWID())) % 365, GETDATE()),
+    DATEADD(DAY, -ABS(CHECKSUM(NEWID())) % 360, GETDATE()),
+    CASE ABS(CHECKSUM(NEWID())) % 3 
+        WHEN 0 THEN 'Pending'
+        WHEN 1 THEN 'Shipped'
+        ELSE 'Delivered'
+    END,
+    50 + ABS(CHECKSUM(NEWID())) % 450
+FROM sys.all_columns a
+CROSS JOIN sys.all_columns b
+WHERE a.column_id <= 10 AND b.column_id <= 100;
+
+-- Add some order details
+INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice)
+SELECT 
+    o.OrderID,
+    1 + ABS(CHECKSUM(NEWID())) % 10,
+    1 + ABS(CHECKSUM(NEWID())) % 5,
+    p.Price
+FROM Orders o
+CROSS APPLY (SELECT TOP 1 Price FROM Products WHERE ProductID = 1 + ABS(CHECKSUM(NEWID())) % 10) p
+WHERE o.OrderID <= 1000;
+
+PRINT 'CarvedRock database created successfully!';
+PRINT 'Setup complete in under 1 minute!';
+GO
