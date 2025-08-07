@@ -42,4 +42,58 @@ BEGIN
         WHERE o.OrderDate BETWEEN @StartDate AND @EndDate
             AND c.Email LIKE '%@example.com'
         GROUP BY c.FirstName, c.LastName, c.Email
-        HAVING SUM(od.Qua
+        HAVING SUM(od.Quantity * od.UnitPrice) > 100
+        ORDER BY TotalSpent DESC;
+    END
+END;
+GO
+
+-- Create cursor-based procedure
+CREATE OR ALTER PROCEDURE sp_UpdateInventoryLevels
+AS
+BEGIN
+    DECLARE @ProductID INT;
+    DECLARE @CurrentStock INT;
+    DECLARE @ReorderLevel INT;
+    
+    DECLARE product_cursor CURSOR FOR
+        SELECT ProductID, StockQuantity, ReorderLevel
+        FROM Products
+        WHERE Discontinued = 0;
+    
+    OPEN product_cursor;
+    FETCH NEXT FROM product_cursor INTO @ProductID, @CurrentStock, @ReorderLevel;
+    
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        IF @CurrentStock < @ReorderLevel
+        BEGIN
+            UPDATE Products
+            SET StockQuantity = StockQuantity + 100
+            WHERE ProductID = @ProductID;
+            
+            INSERT INTO InventoryTransactions (ProductID, TransactionType, Quantity, Notes)
+            VALUES (@ProductID, 'Reorder', 100, 'Auto-reorder triggered');
+        END;
+        
+        FETCH NEXT FROM product_cursor INTO @ProductID, @CurrentStock, @ReorderLevel;
+    END;
+    
+    CLOSE product_cursor;
+    DEALLOCATE product_cursor;
+END;
+GO
+
+-- Create fragmented index
+CREATE INDEX IX_Temp ON Orders(OrderDate) WITH (FILLFACTOR = 10);
+GO
+
+-- Create other indexes that might be missing
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Orders_CustomerID')
+    CREATE INDEX IX_Orders_CustomerID ON Orders(CustomerID);
+IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_OrderDetails_OrderID')
+    CREATE INDEX IX_OrderDetails_OrderID ON OrderDetails(OrderID);
+GO
+
+PRINT 'Performance issues created successfully!';
+GO
