@@ -1,4 +1,4 @@
--- Create CarvedRock Database (Fast Version)
+-- Create CarvedRock Database
 USE master;
 GO
 
@@ -78,7 +78,6 @@ CREATE TABLE MaintenanceHistory (
     Status NVARCHAR(20),
     Details NVARCHAR(MAX)
 );
-GO
 
 -- Insert products
 INSERT INTO Products (ProductName, Category, Price, StockQuantity, ReorderLevel)
@@ -93,12 +92,10 @@ VALUES
     ('Water Filter', 'Camping', 49.99, 100, 20),
     ('Trekking Poles', 'Hiking', 79.99, 80, 16),
     ('Headlamp', 'Accessories', 34.99, 150, 30);
-GO
 
--- Generate minimal data (500 customers, 1000 orders - takes 30 seconds)
-PRINT 'Generating 500 customers...';
+-- Generate only 100 customers for quick setup
 DECLARE @i INT = 1;
-WHILE @i <= 500
+WHILE @i <= 100
 BEGIN
     INSERT INTO Customers (FirstName, LastName, Email, Phone, Address, City, State, ZipCode)
     VALUES (
@@ -107,54 +104,28 @@ BEGIN
         'customer' + CAST(@i AS NVARCHAR(10)) + '@example.com',
         '555-' + RIGHT('0000' + CAST(@i AS NVARCHAR(10)), 4),
         CAST(@i AS NVARCHAR(10)) + ' Main Street',
-        CASE @i % 5 
-            WHEN 0 THEN 'Seattle'
-            WHEN 1 THEN 'Portland'
-            WHEN 2 THEN 'San Francisco'
-            WHEN 3 THEN 'Los Angeles'
-            ELSE 'Denver' 
-        END,
-        CASE @i % 5 
-            WHEN 0 THEN 'WA'
-            WHEN 1 THEN 'OR'
-            WHEN 2 THEN 'CA'
-            WHEN 3 THEN 'CA'
-            ELSE 'CO' 
-        END,
-        RIGHT('00000' + CAST(10000 + @i AS NVARCHAR(10)), 5)
+        'Seattle', 'WA', '98101'
     );
     SET @i = @i + 1;
 END
-GO
 
-PRINT 'Generating 1000 orders...';
--- Use batch insert for orders
-INSERT INTO Orders (CustomerID, OrderDate, ShipDate, OrderStatus, TotalAmount)
-SELECT 
-    1 + ABS(CHECKSUM(NEWID())) % 500,
-    DATEADD(DAY, -ABS(CHECKSUM(NEWID())) % 365, GETDATE()),
-    DATEADD(DAY, -ABS(CHECKSUM(NEWID())) % 360, GETDATE()),
-    CASE ABS(CHECKSUM(NEWID())) % 3 
-        WHEN 0 THEN 'Pending'
-        WHEN 1 THEN 'Shipped'
-        ELSE 'Delivered'
-    END,
-    50 + ABS(CHECKSUM(NEWID())) % 450
-FROM sys.all_columns a
-CROSS JOIN sys.all_columns b
-WHERE a.column_id <= 10 AND b.column_id <= 100;
-
--- Add some order details
-INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice)
-SELECT 
-    o.OrderID,
-    1 + ABS(CHECKSUM(NEWID())) % 10,
-    1 + ABS(CHECKSUM(NEWID())) % 5,
-    p.Price
-FROM Orders o
-CROSS APPLY (SELECT TOP 1 Price FROM Products WHERE ProductID = 1 + ABS(CHECKSUM(NEWID())) % 10) p
-WHERE o.OrderID <= 1000;
+-- Generate only 200 orders
+SET @i = 1;
+WHILE @i <= 200
+BEGIN
+    INSERT INTO Orders (CustomerID, OrderDate, OrderStatus, TotalAmount)
+    VALUES (
+        1 + (@i % 100),
+        DATEADD(DAY, -@i, GETDATE()),
+        'Shipped',
+        100.00 + (@i * 10)
+    );
+    
+    INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice)
+    VALUES (@i, 1 + (@i % 10), 1, 100.00);
+    
+    SET @i = @i + 1;
+END
 
 PRINT 'CarvedRock database created successfully!';
-PRINT 'Setup complete in under 1 minute!';
 GO
