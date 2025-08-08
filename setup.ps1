@@ -220,22 +220,35 @@ $perfScript = @'
 USE CarvedRock;
 GO
 
--- Create indexes that we will fragment
-CREATE NONCLUSTERED INDEX IX_Orders_CustomerID ON Orders(CustomerID);
-CREATE NONCLUSTERED INDEX IX_OrderDetails_OrderID ON OrderDetails(OrderID);
+-- Drop any existing indexes to create missing index scenarios
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Orders_CustomerID' AND object_id = OBJECT_ID('Orders'))
+    DROP INDEX IX_Orders_CustomerID ON Orders;
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Orders_OrderDate' AND object_id = OBJECT_ID('Orders'))
+    DROP INDEX IX_Orders_OrderDate ON Orders;
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Orders_OrderDate_CustomerID' AND object_id = OBJECT_ID('Orders'))
+    DROP INDEX IX_Orders_OrderDate_CustomerID ON Orders;
 GO
 
--- Now drop some indexes to create missing index scenarios
-DROP INDEX IX_Orders_CustomerID ON Orders;
-GO
-
--- Create a stored procedure with performance issues
-CREATE OR ALTER PROCEDURE sp_GetCustomerOrders
-    @CustomerID INT
-AS
+-- Run queries to generate missing index recommendations
+DECLARE @i INT = 1;
+WHILE @i <= 20
 BEGIN
-    SELECT * FROM Orders WHERE CustomerID = @CustomerID;
+    SELECT * FROM Orders WHERE CustomerID = @i;
+    SELECT * FROM Orders WHERE OrderDate >= DATEADD(DAY, -@i*10, GETDATE());
+    SET @i = @i + 1;
 END
+GO
+
+-- More queries to strengthen missing index recommendations
+SELECT o.OrderID, o.OrderDate, o.TotalAmount, c.FirstName, c.LastName
+FROM Orders o
+INNER JOIN Customers c ON o.CustomerID = c.CustomerID
+WHERE o.OrderDate >= DATEADD(MONTH, -3, GETDATE());
+GO
+
+SELECT * FROM Products WHERE CategoryID = 1;
+SELECT * FROM Products WHERE CategoryID = 2;
+SELECT * FROM OrderDetails WHERE OrderID BETWEEN 1 AND 100;
 GO
 
 PRINT 'Performance scenarios created!';
@@ -306,10 +319,106 @@ else {
     Write-Host "  WARNING: Some performance scenarios may have failed" -ForegroundColor Yellow
 }
 
+# Step 3b: Generate missing index stats
+Write-Host "Step 3b: Generating missing index statistics..." -ForegroundColor Cyan
+$output3b = sqlcmd -S localhost -E -i "C:\LabFiles\generate_missing_indexes.sql" 2>&1
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "  SUCCESS: Missing index stats generated" -ForegroundColor Green
+}
+else {
+    Write-Host "  INFO: Missing index generation completed" -ForegroundColor Yellow
+}
+
 # Step 4: Verify Setup
 Write-Host "`nVerifying setup..." -ForegroundColor Yellow
 $verifyOutput = sqlcmd -S localhost -E -i "C:\LabFiles\verify_setup.sql" 2>&1
 Write-Host $verifyOutput -ForegroundColor Cyan
+
+# Create script to generate missing indexes
+$generateIndexScript = @'
+-- Script to Generate Missing Index Recommendations
+USE CarvedRock;
+GO
+
+-- Drop existing indexes if any
+IF EXISTS (SELECT * FROM sys.indexes WHERE name LIKE 'IX_Orders_%' AND object_id = OBJECT_ID('Orders'))
+BEGIN
+    DECLARE @sql NVARCHAR(MAX) = '';
+    SELECT @sql = @sql + 'DROP INDEX ' + name + ' ON Orders; '
+    FROM sys.indexes 
+    WHERE object_id = OBJECT_ID('Orders') 
+    AND name LIKE 'IX_%';
+    
+    IF @sql != ''
+        EXEC sp_executesql @sql;
+END
+GO
+
+DBCC FREEPROCCACHE;
+GO
+
+-- Run queries that need indexes
+DECLARE @i INT = 1;
+WHILE @i <= 30
+BEGIN
+    SELECT * FROM Orders WHERE CustomerID = @i;
+    SELECT * FROM Orders WHERE OrderDate >= DATEADD(DAY, -@i*10, GETDATE());
+    SET @i = @i + 1;
+END
+GO
+
+-- Check for missing indexes
+SELECT 
+    OBJECT_NAME(mid.object_id) AS TableName,
+    mid.equality_columns AS WhereColumns,
+    ROUND(migs.avg_user_impact, 2) AS AvgPercentImprovement
+FROM sys.dm_db_missing_index_groups mig
+INNER JOIN sys.dm_db_missing_index_group_stats migs ON migs.group_handle = mig.index_group_handle
+INNER JOIN sys.dm_db_missing_index_details mid ON mig.index_handle = mid.index_handle
+WHERE mid.database_id = DB_ID()
+ORDER BY migs.avg_user_impact DESC;
+GO
+'@
+
+$generateIndexScript | Out-File -FilePath "C:\LabFiles\generate_missing_indexes.sql" -Encoding UTF8 -Force
+
+# Create verification script
+$verifyLabScript = @'
+-- Complete Lab Verification Script
+USE master;
+GO
+
+PRINT '========================================';
+PRINT 'LAB VERIFICATION STARTING...';
+PRINT '========================================';
+
+IF DB_ID('CarvedRock') IS NOT NULL
+BEGIN
+    PRINT '[PASS] Database CarvedRock exists';
+    USE CarvedRock;
+    
+    DECLARE @tableCount INT = (SELECT COUNT(*) FROM sys.tables);
+    IF @tableCount >= 5
+        PRINT '[PASS] Tables created: ' + CAST(@tableCount AS VARCHAR(10));
+    ELSE
+        PRINT '[FAIL] Missing tables';
+    
+    DECLARE @customerCount INT = (SELECT COUNT(*) FROM Customers);
+    IF @customerCount > 0
+        PRINT '[PASS] Data loaded: ' + CAST(@customerCount AS VARCHAR(10)) + ' customers';
+    ELSE
+        PRINT '[FAIL] No data in Customers table';
+END
+ELSE
+BEGIN
+    PRINT '[FAIL] Database CarvedRock does not exist!';
+END
+
+PRINT '========================================';
+GO
+'@
+
+$verifyLabScript | Out-File -FilePath "C:\LabFiles\verify_lab_complete.sql" -Encoding UTF8 -Force
 
 # Create a manual setup batch file as backup
 $batchScript = @"
@@ -320,6 +429,8 @@ timeout /t 5
 sqlcmd -S localhost -E -i "C:\LabFiles\populate_data.sql"
 timeout /t 5
 sqlcmd -S localhost -E -i "C:\LabFiles\performance_issues.sql"
+timeout /t 5
+sqlcmd -S localhost -E -i "C:\LabFiles\generate_missing_indexes.sql"
 timeout /t 5
 sqlcmd -S localhost -E -i "C:\LabFiles\verify_setup.sql"
 pause
@@ -349,10 +460,13 @@ RUN_IF_DATABASE_MISSING.bat
 Or open SSMS and run these files in order:
 1. C:\LabFiles\create_database.sql
 2. C:\LabFiles\populate_data.sql
-3. C:\LabFiles\performance_issues.sql
+3. C:\LabFiles\create_performance_issues.sql
 
 To verify setup, run:
 C:\LabFiles\verify_setup.sql
+
+If missing index DMV shows 0 rows, run:
+C:\LabFiles\generate_missing_indexes.sql
 
 Server: localhost
 Auth: Windows Authentication
