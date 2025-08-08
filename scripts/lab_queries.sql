@@ -1,4 +1,8 @@
 -- Lab Queries for Performance Tuning Exercises
+-- First verify the database exists
+SELECT name FROM sys.databases WHERE name = 'CarvedRock';
+GO
+
 USE CarvedRock;
 GO
 
@@ -6,19 +10,14 @@ GO
 -- SECTION 1: DMV Queries for Performance Analysis
 -- =====================================================
 
--- Query 1: Find top 10 most expensive queries by CPU
+-- Query 1: Find top 10 most expensive queries by CPU (simplified)
 SELECT TOP 10
-    qs.total_worker_time/qs.execution_count AS avg_cpu_time,
     qs.total_worker_time AS total_cpu_time,
     qs.execution_count,
-    SUBSTRING(st.text, (qs.statement_start_offset/2) + 1,
-        ((CASE qs.statement_end_offset
-            WHEN -1 THEN DATALENGTH(st.text)
-            ELSE qs.statement_end_offset
-        END - qs.statement_start_offset)/2) + 1) AS query_text
+    SUBSTRING(st.text, 1, 100) AS query_text
 FROM sys.dm_exec_query_stats qs
 CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
-ORDER BY avg_cpu_time DESC;
+ORDER BY qs.total_worker_time DESC;
 GO
 
 -- Query 2: Find missing indexes
