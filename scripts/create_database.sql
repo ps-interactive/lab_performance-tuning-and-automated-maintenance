@@ -9,32 +9,13 @@ BEGIN
 END
 GO
 
-CREATE DATABASE CarvedRock
-ON PRIMARY 
-(
-    NAME = N'CarvedRock',
-    FILENAME = N'C:\SQLData\CarvedRock.mdf',
-    SIZE = 100MB,
-    MAXSIZE = UNLIMITED,
-    FILEGROWTH = 10MB
-)
-LOG ON 
-(
-    NAME = N'CarvedRock_log',
-    FILENAME = N'C:\SQLData\CarvedRock_log.ldf',
-    SIZE = 50MB,
-    MAXSIZE = 2048GB,
-    FILEGROWTH = 10MB
-);
-GO
-
-ALTER DATABASE CarvedRock SET RECOVERY SIMPLE;
+CREATE DATABASE CarvedRock;
 GO
 
 USE CarvedRock;
 GO
 
--- Create tables
+-- Create simple tables without foreign keys
 CREATE TABLE Customers (
     CustomerID INT IDENTITY(1,1) PRIMARY KEY,
     FirstName NVARCHAR(50) NOT NULL,
@@ -61,7 +42,7 @@ GO
 CREATE TABLE Products (
     ProductID INT IDENTITY(1,1) PRIMARY KEY,
     ProductName NVARCHAR(100) NOT NULL,
-    CategoryID INT FOREIGN KEY REFERENCES Categories(CategoryID),
+    CategoryID INT,
     Price DECIMAL(10,2) NOT NULL,
     StockQuantity INT NOT NULL DEFAULT 0,
     Description NVARCHAR(500),
@@ -72,7 +53,7 @@ GO
 
 CREATE TABLE Orders (
     OrderID INT IDENTITY(1,1) PRIMARY KEY,
-    CustomerID INT FOREIGN KEY REFERENCES Customers(CustomerID),
+    CustomerID INT,
     OrderDate DATETIME DEFAULT GETDATE(),
     TotalAmount DECIMAL(10,2),
     OrderStatus NVARCHAR(20) DEFAULT 'Pending',
@@ -86,43 +67,13 @@ GO
 
 CREATE TABLE OrderDetails (
     OrderDetailID INT IDENTITY(1,1) PRIMARY KEY,
-    OrderID INT FOREIGN KEY REFERENCES Orders(OrderID),
-    ProductID INT FOREIGN KEY REFERENCES Products(ProductID),
+    OrderID INT,
+    ProductID INT,
     Quantity INT NOT NULL,
     UnitPrice DECIMAL(10,2) NOT NULL,
-    Discount DECIMAL(5,2) DEFAULT 0,
-    TotalPrice AS (Quantity * UnitPrice * (1 - Discount/100)) PERSISTED
-);
-GO
-
-CREATE TABLE Inventory (
-    InventoryID INT IDENTITY(1,1) PRIMARY KEY,
-    ProductID INT FOREIGN KEY REFERENCES Products(ProductID),
-    WarehouseLocation NVARCHAR(50),
-    Quantity INT NOT NULL,
-    LastRestockDate DATETIME,
-    ReorderLevel INT DEFAULT 10,
-    ReorderQuantity INT DEFAULT 50
-);
-GO
-
-CREATE TABLE Reviews (
-    ReviewID INT IDENTITY(1,1) PRIMARY KEY,
-    ProductID INT FOREIGN KEY REFERENCES Products(ProductID),
-    CustomerID INT FOREIGN KEY REFERENCES Customers(CustomerID),
-    Rating INT CHECK (Rating >= 1 AND Rating <= 5),
-    ReviewText NVARCHAR(1000),
-    ReviewDate DATETIME DEFAULT GETDATE()
-);
-GO
-
--- Create a table with intentionally bad design for performance demos
-CREATE TABLE OrderHistory (
-    ID INT IDENTITY(1,1),
-    OrderData NVARCHAR(MAX),
-    ProcessedFlag BIT DEFAULT 0,
-    ProcessedDate DATETIME
+    Discount DECIMAL(5,2) DEFAULT 0
 );
 GO
 
 PRINT 'CarvedRock database created successfully!';
+GO
