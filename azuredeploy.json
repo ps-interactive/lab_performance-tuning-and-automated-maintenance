@@ -302,7 +302,7 @@
     },
     "labInstructions": {
       "type": "string",
-      "value": "Connect via RDP, open SSMS from desktop, connect to '.' or 'localhost', then run C:\\LabScripts\\00-Setup-Lab.sql"
+      "value": "Connect via RDP, open SSMS from desktop, connect to localhost, then run C:\\LabScripts\\00-Setup-Lab.sql"
     }
   }
 }
