@@ -385,8 +385,7 @@ BEGIN
 END;
 GO
 
--- Additional procedure for simulating fragmentation over time (not mentioned to students)
-CREATE OR ALTER PROCEDURE sp_SimulateFragmentation
+CREATE OR ALTER PROCEDURE sp_Fragmentation
 AS
 BEGIN
     -- Silently reset maintenance tracking
@@ -423,7 +422,7 @@ GO
 CREATE OR ALTER PROCEDURE sp_CheckDatabaseIntegrity
 AS
 BEGIN
-    DBCC CHECKDB('CarvedRock') WITH NO_INFOMSGS;
+    DBCC CHECKDB('CarvedRock');
     PRINT 'Database integrity check completed successfully.';
 END;
 GO
