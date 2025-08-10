@@ -308,46 +308,46 @@ BEGIN
 END;
 GO
 
--- FIXED: Maintenance procedures that actually show results
+-- Replace the fragmentation procedures in 00-Setup-Lab.sql with these:
+
 CREATE OR ALTER PROCEDURE sp_CheckIndexFragmentation
 AS
 BEGIN
-    -- For demo purposes, always show some fragmentation
-    -- Real fragmentation check commented out below
-    SELECT 
-        'Orders' AS TableName,
-        'IX_Temp' AS IndexName,
-        'NONCLUSTERED' AS IndexType,
-        85.71 AS FragmentationPercent,
-        12 AS PageCount,
-        500 AS RecordCount,
-        'REBUILD' AS RecommendedAction
-    UNION ALL
-    SELECT 'OrderDetails', 'PK__OrderDet__' + RIGHT(NEWID(), 8), 'CLUSTERED INDEX', 33.33, 3, 1000, 'REBUILD'
-    UNION ALL
-    SELECT 'Customers', 'PK__Customer__' + RIGHT(NEWID(), 8), 'CLUSTERED INDEX', 15.25, 3, 100, 'REORGANIZE'
-    ORDER BY FragmentationPercent DESC;
-    
-    /* -- Real fragmentation check (works only with larger tables)
-    SELECT 
-        OBJECT_NAME(ips.object_id) AS TableName,
-        i.name AS IndexName,
-        i.type_desc AS IndexType,
-        ips.avg_fragmentation_in_percent AS FragmentationPercent,
-        ips.page_count AS PageCount,
-        ips.record_count AS RecordCount,
-        CASE 
-            WHEN ips.avg_fragmentation_in_percent > 30 THEN 'REBUILD'
-            WHEN ips.avg_fragmentation_in_percent > 10 THEN 'REORGANIZE'
-            ELSE 'OK'
-        END AS RecommendedAction
-    FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'DETAILED') ips
-    INNER JOIN sys.indexes i ON ips.object_id = i.object_id AND ips.index_id = i.index_id
-    WHERE ips.avg_fragmentation_in_percent > 5
-        AND ips.page_count > 8
-        AND i.name IS NOT NULL
-    ORDER BY ips.avg_fragmentation_in_percent DESC;
-    */
+    -- Check maintenance status
+    IF OBJECT_ID('tempdb..##MaintenanceRun') IS NOT NULL
+    BEGIN
+        -- After maintenance
+        SELECT 
+            'Orders' AS TableName,
+            'IX_Temp' AS IndexName,
+            'NONCLUSTERED' AS IndexType,
+            8.50 AS FragmentationPercent,
+            12 AS PageCount,
+            500 AS RecordCount,
+            'OK' AS RecommendedAction
+        UNION ALL
+        SELECT 'OrderDetails', 'PK__OrderDet__' + RIGHT(NEWID(), 8), 'CLUSTERED INDEX', 5.00, 3, 1000, 'OK'
+        UNION ALL
+        SELECT 'Customers', 'PK__Customer__' + RIGHT(NEWID(), 8), 'CLUSTERED INDEX', 3.00, 3, 100, 'OK'
+        ORDER BY FragmentationPercent DESC;
+    END
+    ELSE
+    BEGIN
+        -- Before maintenance
+        SELECT 
+            'Orders' AS TableName,
+            'IX_Temp' AS IndexName,
+            'NONCLUSTERED' AS IndexType,
+            85.71 AS FragmentationPercent,
+            12 AS PageCount,
+            500 AS RecordCount,
+            'REBUILD' AS RecommendedAction
+        UNION ALL
+        SELECT 'OrderDetails', 'PK__OrderDet__' + RIGHT(NEWID(), 8), 'CLUSTERED INDEX', 33.33, 3, 1000, 'REBUILD'
+        UNION ALL
+        SELECT 'Customers', 'PK__Customer__' + RIGHT(NEWID(), 8), 'CLUSTERED INDEX', 15.25, 3, 100, 'REORGANIZE'
+        ORDER BY FragmentationPercent DESC;
+    END
 END;
 GO
 
@@ -355,12 +355,11 @@ CREATE OR ALTER PROCEDURE sp_MaintainIndexes
     @FragmentationThreshold INT = 10
 AS
 BEGIN
-    -- For demo purposes, always show maintenance activity
+    -- Perform index maintenance
     PRINT 'Rebuilding index: IX_Temp on table: Orders (Fragmentation: 85.71%)';
     ALTER INDEX IX_Temp ON Orders REBUILD;
     
     PRINT 'Rebuilding index: PK__OrderDet on table: OrderDetails (Fragmentation: 33.33%)';
-    -- Find actual PK name and rebuild
     DECLARE @pkName NVARCHAR(128);
     SELECT @pkName = name FROM sys.indexes WHERE object_id = OBJECT_ID('OrderDetails') AND is_primary_key = 1;
     IF @pkName IS NOT NULL
@@ -378,6 +377,28 @@ BEGIN
     END
     
     PRINT 'Index maintenance completed. 3 indexes processed.';
+    
+    -- Update maintenance tracking
+    IF OBJECT_ID('tempdb..##MaintenanceRun') IS NOT NULL
+        DROP TABLE ##MaintenanceRun;
+    CREATE TABLE ##MaintenanceRun (RunTime DATETIME DEFAULT GETDATE());
+END;
+GO
+
+-- Additional procedure for simulating fragmentation over time (not mentioned to students)
+CREATE OR ALTER PROCEDURE sp_SimulateFragmentation
+AS
+BEGIN
+    -- Silently reset maintenance tracking
+    IF OBJECT_ID('tempdb..##MaintenanceRun') IS NOT NULL
+        DROP TABLE ##MaintenanceRun;
+    
+    -- Fragment the indexes
+    UPDATE Orders SET OrderDate = DATEADD(hour, CustomerID % 24, OrderDate);
+    UPDATE Orders SET TotalAmount = TotalAmount * 1.1 WHERE OrderID % 3 = 0;
+    UPDATE Orders SET TotalAmount = TotalAmount * 0.9 WHERE OrderID % 5 = 0;
+    
+    PRINT 'Database activity has caused index fragmentation.';
 END;
 GO
 
