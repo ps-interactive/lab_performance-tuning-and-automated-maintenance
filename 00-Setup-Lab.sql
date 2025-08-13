@@ -1,6 +1,4 @@
--- Quick Setup Script for SQL Server Performance Lab
--- This runs in under 30 seconds
-
+-- SQL Server Performance Lab Setup - Creates REAL performance issues
 USE master;
 GO
 
@@ -17,9 +15,9 @@ GO
 USE CarvedRock;
 GO
 
--- Create tables
+-- Create tables WITHOUT any indexes initially (except PKs)
 CREATE TABLE Customers (
-    CustomerID INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerID INT IDENTITY(1,1) PRIMARY KEY NONCLUSTERED,  -- Use nonclustered to cause fragmentation
     FirstName NVARCHAR(50),
     LastName NVARCHAR(50),
     Email NVARCHAR(100),
@@ -41,8 +39,9 @@ CREATE TABLE Products (
     Discontinued BIT DEFAULT 0
 );
 
+-- Orders table WITHOUT CustomerID index (this will cause performance issues)
 CREATE TABLE Orders (
-    OrderID INT IDENTITY(1,1) PRIMARY KEY,
+    OrderID INT IDENTITY(1,1) PRIMARY KEY NONCLUSTERED,  -- Nonclustered to allow fragmentation
     CustomerID INT FOREIGN KEY REFERENCES Customers(CustomerID),
     OrderDate DATETIME DEFAULT GETDATE(),
     ShipDate DATETIME,
@@ -54,8 +53,9 @@ CREATE TABLE Orders (
     ShippingZip NVARCHAR(10)
 );
 
+-- OrderDetails WITHOUT OrderID index
 CREATE TABLE OrderDetails (
-    OrderDetailID INT IDENTITY(1,1) PRIMARY KEY,
+    OrderDetailID INT IDENTITY(1,1) PRIMARY KEY NONCLUSTERED,
     OrderID INT FOREIGN KEY REFERENCES Orders(OrderID),
     ProductID INT FOREIGN KEY REFERENCES Products(ProductID),
     Quantity INT,
@@ -84,20 +84,22 @@ CREATE TABLE MaintenanceHistory (
 -- Insert products
 INSERT INTO Products (ProductName, Category, Price, StockQuantity, ReorderLevel)
 VALUES 
-    ('Hiking Boots', 'Footwear', 129.99, 100, 20),
-    ('Camping Tent 2-Person', 'Camping', 199.99, 50, 10),
-    ('Climbing Rope 60m', 'Climbing', 249.99, 30, 5),
-    ('Trail Running Shoes', 'Footwear', 89.99, 150, 30),
-    ('Backpack 65L', 'Hiking', 179.99, 75, 15),
-    ('Sleeping Bag -10C', 'Camping', 149.99, 60, 12),
-    ('Carabiner Set', 'Climbing', 39.99, 200, 40),
-    ('Water Filter', 'Camping', 49.99, 100, 20),
-    ('Trekking Poles', 'Hiking', 79.99, 80, 16),
-    ('Headlamp', 'Accessories', 34.99, 150, 30);
+    ('Hiking Boots', 'Footwear', 129.99, 15, 20),  -- Low stock to trigger reorder
+    ('Camping Tent 2-Person', 'Camping', 199.99, 8, 10),
+    ('Climbing Rope 60m', 'Climbing', 249.99, 3, 5),
+    ('Trail Running Shoes', 'Footwear', 89.99, 25, 30),
+    ('Backpack 65L', 'Hiking', 179.99, 12, 15),
+    ('Sleeping Bag -10C', 'Camping', 149.99, 10, 12),
+    ('Carabiner Set', 'Climbing', 39.99, 40, 40),
+    ('Water Filter', 'Camping', 49.99, 18, 20),
+    ('Trekking Poles', 'Hiking', 79.99, 14, 16),
+    ('Headlamp', 'Accessories', 34.99, 25, 30);
 
--- Generate 100 customers
+-- Generate MORE data for realistic performance issues (5000 customers, 10000 orders)
 DECLARE @i INT = 1;
-WHILE @i <= 100
+PRINT 'Creating 5000 customers...';
+
+WHILE @i <= 5000
 BEGIN
     INSERT INTO Customers (FirstName, LastName, Email, Phone, Address, City, State, ZipCode)
     VALUES (
@@ -106,45 +108,60 @@ BEGIN
         'customer' + CAST(@i AS NVARCHAR(10)) + '@example.com',
         '555-' + RIGHT('0000' + CAST(@i AS NVARCHAR(10)), 4),
         CAST(@i AS NVARCHAR(10)) + ' Main Street',
-        'Seattle', 'WA', '98101'
+        CASE WHEN @i % 3 = 0 THEN 'Seattle' WHEN @i % 3 = 1 THEN 'Portland' ELSE 'Tacoma' END,
+        'WA', 
+        '98' + RIGHT('000' + CAST(@i % 999 AS NVARCHAR(3)), 3)
     );
+    
+    IF @i % 1000 = 0 PRINT 'Created ' + CAST(@i AS VARCHAR(10)) + ' customers...';
     SET @i = @i + 1;
 END
 
--- Generate 500 orders with details
+-- Generate 10000 orders with varying dates
 SET @i = 1;
-WHILE @i <= 500
+PRINT 'Creating 10000 orders...';
+
+WHILE @i <= 10000
 BEGIN
+    DECLARE @custId INT = 1 + (@i % 5000);
+    DECLARE @orderDate DATETIME = DATEADD(DAY, -(@i % 365), GETDATE());
+    
     INSERT INTO Orders (CustomerID, OrderDate, OrderStatus, TotalAmount, ShippingAddress, ShippingCity, ShippingState, ShippingZip)
     VALUES (
-        1 + (@i % 100),
-        DATEADD(DAY, -@i/2, GETDATE()),
-        'Shipped',
-        100.00 + (@i * 10),
+        @custId,
+        @orderDate,
+        CASE WHEN @i % 4 = 0 THEN 'Pending' WHEN @i % 4 = 1 THEN 'Shipped' WHEN @i % 4 = 2 THEN 'Delivered' ELSE 'Processing' END,
+        50.00 + (@i % 500),
         CAST(@i AS NVARCHAR(10)) + ' Shipping St',
         'Seattle', 'WA', '98101'
     );
     
+    -- Add 2-3 order details per order
     INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice)
-    VALUES (@i, 1 + (@i % 10), 1 + (@i % 3), 50.00 + (@i % 50));
+    VALUES (@i, 1 + (@i % 10), 1 + (@i % 5), 25.00 + (@i % 100));
     
     IF @i % 2 = 0
         INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice)
-        VALUES (@i, 1 + ((@i+1) % 10), 2, 75.00);
+        VALUES (@i, 1 + ((@i+3) % 10), 1 + (@i % 3), 35.00 + (@i % 75));
     
+    IF @i % 3 = 0
+        INSERT INTO OrderDetails (OrderID, ProductID, Quantity, UnitPrice)
+        VALUES (@i, 1 + ((@i+5) % 10), 2, 45.00 + (@i % 50));
+    
+    IF @i % 2000 = 0 PRINT 'Created ' + CAST(@i AS VARCHAR(10)) + ' orders...';
     SET @i = @i + 1;
 END
 
--- Create fragmented index for demonstration
-CREATE INDEX IX_Temp ON Orders(OrderDate) WITH (FILLFACTOR = 10);
+PRINT 'Data creation completed.';
 GO
 
--- Create performance issue procedures
+-- Create the problematic stored procedure (WITHOUT proper indexes)
 CREATE OR ALTER PROCEDURE sp_GetCustomerOrderHistory
     @StartDate DATETIME,
     @EndDate DATETIME
 AS
 BEGIN
+    -- Intentionally inefficient query that will benefit from indexes
     SELECT 
         c.FirstName + ' ' + c.LastName AS CustomerName,
         c.Email,
@@ -152,15 +169,16 @@ BEGIN
         SUM(od.Quantity * od.UnitPrice) AS TotalSpent,
         AVG(od.Quantity * od.UnitPrice) AS AvgOrderValue
     FROM Customers c
-    INNER JOIN Orders o ON c.CustomerID = o.CustomerID
-    INNER JOIN OrderDetails od ON o.OrderID = od.OrderID
-    WHERE o.OrderDate BETWEEN @StartDate AND @EndDate
+    INNER JOIN Orders o ON c.CustomerID = o.CustomerID  -- No index on Orders.CustomerID
+    INNER JOIN OrderDetails od ON o.OrderID = od.OrderID  -- No index on OrderDetails.OrderID
+    WHERE o.OrderDate BETWEEN @StartDate AND @EndDate  -- No index on OrderDate
     GROUP BY c.FirstName, c.LastName, c.Email
     HAVING SUM(od.Quantity * od.UnitPrice) > 100
     ORDER BY TotalSpent DESC;
 END;
 GO
 
+-- Create cursor-based procedure for comparison
 CREATE OR ALTER PROCEDURE sp_UpdateInventoryLevels
 AS
 BEGIN
@@ -197,6 +215,7 @@ BEGIN
 END;
 GO
 
+-- Optimized version
 CREATE OR ALTER PROCEDURE sp_UpdateInventoryLevels_Optimized
 AS
 BEGIN
@@ -231,22 +250,15 @@ BEGIN
 END;
 GO
 
--- Blocking scenario procedures
+-- Blocking procedures
 CREATE OR ALTER PROCEDURE sp_Session1_Blocker
 AS
 BEGIN
     BEGIN TRANSACTION;
-    
-    UPDATE Customers
-    SET Email = 'blocked@example.com'
-    WHERE CustomerID = 1;
-    
+    UPDATE Customers SET Email = 'blocked@example.com' WHERE CustomerID = 1;
     PRINT 'Session 1: Updated customer 1 and holding transaction open...';
     PRINT 'This transaction will hold locks for 2 minutes.';
-    PRINT 'Run sp_Session2_Blocked in another window to create blocking.';
-    
     WAITFOR DELAY '00:02:00';
-    
     ROLLBACK TRANSACTION;
     PRINT 'Session 1: Transaction rolled back.';
 END;
@@ -256,16 +268,9 @@ CREATE OR ALTER PROCEDURE sp_Session2_Blocked
 AS
 BEGIN
     PRINT 'Session 2: Attempting to update customer 1...';
-    PRINT 'This session will be blocked by Session 1.';
-    
     BEGIN TRANSACTION;
-    
-    UPDATE Customers
-    SET Phone = '555-9999'
-    WHERE CustomerID = 1;
-    
+    UPDATE Customers SET Phone = '555-9999' WHERE CustomerID = 1;
     PRINT 'Session 2: Update completed!';
-    
     COMMIT TRANSACTION;
 END;
 GO
@@ -289,7 +294,7 @@ BEGIN
     WHERE blocked.blocking_session_id > 0;
     
     IF @@ROWCOUNT = 0
-        PRINT 'No blocking detected. Run sp_Session1_Blocker first, then sp_Session2_Blocked in another window.';
+        PRINT 'No blocking detected.';
 END;
 GO
 
@@ -304,50 +309,32 @@ BEGIN
         PRINT 'Blocking session ' + CAST(@BlockingSessionID AS NVARCHAR(10)) + ' terminated.';
     END
     ELSE
-        PRINT 'Session ' + CAST(@BlockingSessionID AS NVARCHAR(10)) + ' does not exist.';
+        PRINT 'Session does not exist.';
 END;
 GO
 
--- Replace the fragmentation procedures in 00-Setup-Lab.sql with these:
-
+-- Maintenance procedures that show actual fragmentation
 CREATE OR ALTER PROCEDURE sp_CheckIndexFragmentation
 AS
 BEGIN
-    -- Check maintenance status
-    IF OBJECT_ID('tempdb..##MaintenanceRun') IS NOT NULL
-    BEGIN
-        -- After maintenance
-        SELECT 
-            'Orders' AS TableName,
-            'IX_Temp' AS IndexName,
-            'NONCLUSTERED' AS IndexType,
-            8.50 AS FragmentationPercent,
-            12 AS PageCount,
-            500 AS RecordCount,
-            'OK' AS RecommendedAction
-        UNION ALL
-        SELECT 'OrderDetails', 'PK__OrderDet__' + RIGHT(NEWID(), 8), 'CLUSTERED INDEX', 5.00, 3, 1000, 'OK'
-        UNION ALL
-        SELECT 'Customers', 'PK__Customer__' + RIGHT(NEWID(), 8), 'CLUSTERED INDEX', 3.00, 3, 100, 'OK'
-        ORDER BY FragmentationPercent DESC;
-    END
-    ELSE
-    BEGIN
-        -- Before maintenance
-        SELECT 
-            'Orders' AS TableName,
-            'IX_Temp' AS IndexName,
-            'NONCLUSTERED' AS IndexType,
-            85.71 AS FragmentationPercent,
-            12 AS PageCount,
-            500 AS RecordCount,
-            'REBUILD' AS RecommendedAction
-        UNION ALL
-        SELECT 'OrderDetails', 'PK__OrderDet__' + RIGHT(NEWID(), 8), 'CLUSTERED INDEX', 33.33, 3, 1000, 'REBUILD'
-        UNION ALL
-        SELECT 'Customers', 'PK__Customer__' + RIGHT(NEWID(), 8), 'CLUSTERED INDEX', 15.25, 3, 100, 'REORGANIZE'
-        ORDER BY FragmentationPercent DESC;
-    END
+    -- Check real fragmentation
+    SELECT 
+        OBJECT_NAME(ips.object_id) AS TableName,
+        i.name AS IndexName,
+        i.type_desc AS IndexType,
+        ips.avg_fragmentation_in_percent AS FragmentationPercent,
+        ips.page_count AS PageCount,
+        ips.record_count AS RecordCount,
+        CASE 
+            WHEN ips.avg_fragmentation_in_percent > 30 AND ips.page_count > 8 THEN 'REBUILD'
+            WHEN ips.avg_fragmentation_in_percent > 10 AND ips.page_count > 8 THEN 'REORGANIZE'
+            ELSE 'OK'
+        END AS RecommendedAction
+    FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') ips
+    INNER JOIN sys.indexes i ON ips.object_id = i.object_id AND ips.index_id = i.index_id
+    WHERE i.name IS NOT NULL
+        AND ips.alloc_unit_type_desc = 'IN_ROW_DATA'
+    ORDER BY ips.avg_fragmentation_in_percent DESC;
 END;
 GO
 
@@ -355,52 +342,54 @@ CREATE OR ALTER PROCEDURE sp_MaintainIndexes
     @FragmentationThreshold INT = 10
 AS
 BEGIN
-    -- Perform index maintenance
-    PRINT 'Rebuilding index: IX_Temp on table: Orders (Fragmentation: 85.71%)';
-    ALTER INDEX IX_Temp ON Orders REBUILD;
+    DECLARE @TableName NVARCHAR(128), @IndexName NVARCHAR(128);
+    DECLARE @FragPercent FLOAT, @sql NVARCHAR(500);
+    DECLARE @Count INT = 0;
     
-    PRINT 'Rebuilding index: PK__OrderDet on table: OrderDetails (Fragmentation: 33.33%)';
-    DECLARE @pkName NVARCHAR(128);
-    SELECT @pkName = name FROM sys.indexes WHERE object_id = OBJECT_ID('OrderDetails') AND is_primary_key = 1;
-    IF @pkName IS NOT NULL
+    DECLARE index_cursor CURSOR FOR
+        SELECT 
+            OBJECT_NAME(ips.object_id),
+            i.name,
+            ips.avg_fragmentation_in_percent
+        FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') ips
+        INNER JOIN sys.indexes i ON ips.object_id = i.object_id AND ips.index_id = i.index_id
+        WHERE ips.avg_fragmentation_in_percent > @FragmentationThreshold
+            AND ips.page_count > 8
+            AND i.name IS NOT NULL;
+    
+    OPEN index_cursor;
+    FETCH NEXT FROM index_cursor INTO @TableName, @IndexName, @FragPercent;
+    
+    WHILE @@FETCH_STATUS = 0
     BEGIN
-        DECLARE @sql NVARCHAR(500) = 'ALTER INDEX [' + @pkName + '] ON OrderDetails REBUILD';
+        IF @FragPercent > 30
+        BEGIN
+            SET @sql = 'ALTER INDEX [' + @IndexName + '] ON [' + @TableName + '] REBUILD';
+            PRINT 'Rebuilding index: ' + @IndexName + ' on table: ' + @TableName + ' (Fragmentation: ' + CAST(@FragPercent AS VARCHAR(10)) + '%)';
+        END
+        ELSE
+        BEGIN
+            SET @sql = 'ALTER INDEX [' + @IndexName + '] ON [' + @TableName + '] REORGANIZE';
+            PRINT 'Reorganizing index: ' + @IndexName + ' on table: ' + @TableName + ' (Fragmentation: ' + CAST(@FragPercent AS VARCHAR(10)) + '%)';
+        END
+        
         EXEC sp_executesql @sql;
-    END
+        SET @Count = @Count + 1;
+        
+        FETCH NEXT FROM index_cursor INTO @TableName, @IndexName, @FragPercent;
+    END;
     
-    PRINT 'Reorganizing index: PK__Customer on table: Customers (Fragmentation: 15.25%)';
-    SELECT @pkName = name FROM sys.indexes WHERE object_id = OBJECT_ID('Customers') AND is_primary_key = 1;
-    IF @pkName IS NOT NULL
-    BEGIN
-        SET @sql = 'ALTER INDEX [' + @pkName + '] ON Customers REORGANIZE';
-        EXEC sp_executesql @sql;
-    END
+    CLOSE index_cursor;
+    DEALLOCATE index_cursor;
     
-    PRINT 'Index maintenance completed. 3 indexes processed.';
-    
-    -- Update maintenance tracking
-    IF OBJECT_ID('tempdb..##MaintenanceRun') IS NOT NULL
-        DROP TABLE ##MaintenanceRun;
-    CREATE TABLE ##MaintenanceRun (RunTime DATETIME DEFAULT GETDATE());
+    IF @Count = 0
+        PRINT 'No indexes require maintenance.';
+    ELSE
+        PRINT 'Index maintenance completed. ' + CAST(@Count AS VARCHAR(10)) + ' indexes processed.';
 END;
 GO
 
-CREATE OR ALTER PROCEDURE sp_Fragmentation
-AS
-BEGIN
-    -- Silently reset maintenance tracking
-    IF OBJECT_ID('tempdb..##MaintenanceRun') IS NOT NULL
-        DROP TABLE ##MaintenanceRun;
-    
-    -- Fragment the indexes
-    UPDATE Orders SET OrderDate = DATEADD(hour, CustomerID % 24, OrderDate);
-    UPDATE Orders SET TotalAmount = TotalAmount * 1.1 WHERE OrderID % 3 = 0;
-    UPDATE Orders SET TotalAmount = TotalAmount * 0.9 WHERE OrderID % 5 = 0;
-    
-    PRINT 'Database activity has caused index fragmentation.';
-END;
-GO
-
+-- Other maintenance procedures
 CREATE OR ALTER PROCEDURE sp_BackupDatabase
     @BackupPath NVARCHAR(500) = 'C:\SQLBackups\'
 AS
@@ -412,7 +401,6 @@ BEGIN
         REPLACE(REPLACE(REPLACE(CONVERT(VARCHAR(20), GETDATE(), 120), ':', '-'), ' ', '_'), '-', '') + '.bak';
     
     SET @sql = 'BACKUP DATABASE CarvedRock TO DISK = ''' + @FileName + ''' WITH FORMAT, INIT';
-    
     EXEC sp_executesql @sql;
     
     PRINT 'Backup completed successfully to: ' + @FileName;
@@ -422,7 +410,7 @@ GO
 CREATE OR ALTER PROCEDURE sp_CheckDatabaseIntegrity
 AS
 BEGIN
-    DBCC CHECKDB('CarvedRock');
+    DBCC CHECKDB('CarvedRock') WITH NO_INFOMSGS;
     PRINT 'Database integrity check completed successfully.';
 END;
 GO
@@ -431,44 +419,56 @@ CREATE OR ALTER PROCEDURE sp_PerformCompleteMaintenance
 AS
 BEGIN
     PRINT '=== Starting Complete Database Maintenance ===';
-    PRINT '';
-    PRINT '1. Checking database integrity...';
     EXEC sp_CheckDatabaseIntegrity;
-    PRINT '';
-    PRINT '2. Updating statistics...';
     EXEC sp_updatestats;
-    PRINT 'Statistics update completed.';
-    PRINT '';
-    PRINT '3. Maintaining indexes...';
     EXEC sp_MaintainIndexes;
-    PRINT '';
-    PRINT '4. Performing backup...';
     EXEC sp_BackupDatabase;
-    PRINT '';
     PRINT '=== Maintenance Completed Successfully ===';
 END;
 GO
 
--- Fragment the indexes by updating data
-UPDATE Orders SET OrderDate = DATEADD(hour, CustomerID % 24, OrderDate);
-UPDATE Orders SET TotalAmount = TotalAmount * 1.1 WHERE OrderID % 3 = 0;
-UPDATE Orders SET TotalAmount = TotalAmount * 0.9 WHERE OrderID % 5 = 0;
+-- Create a fragmented index for demonstration
+CREATE NONCLUSTERED INDEX IX_Temp ON Orders(ShippingCity) WITH (FILLFACTOR = 10);
 GO
 
--- Clear cache and run queries for missing index suggestions
+-- Fragment the indexes by doing updates
+UPDATE Orders SET TotalAmount = TotalAmount * 1.01 WHERE OrderID % 10 = 0;
+UPDATE Orders SET ShippingCity = 'Bellevue' WHERE OrderID % 50 = 0;
+UPDATE Orders SET ShippingCity = 'Redmond' WHERE OrderID % 75 = 0;
+GO
+
+-- Clear cache and run queries to generate missing index suggestions
 DBCC FREEPROCCACHE;
 DBCC DROPCLEANBUFFERS;
 GO
 
--- Generate missing index suggestions
-DECLARE @temp INT;
-SELECT @temp = COUNT(*) FROM Orders WHERE CustomerID = 1;
-SELECT @temp = COUNT(*) FROM Orders WHERE OrderDate > '2024-01-01';
-SELECT @temp = COUNT(*) FROM OrderDetails WHERE OrderID BETWEEN 1 AND 100;
+-- Run queries that will definitely generate missing index suggestions
+DECLARE @Count INT;
+
+-- These queries NEED indexes
+SELECT @Count = COUNT(*) FROM Orders WHERE CustomerID = 100;  -- Needs index on CustomerID
+SELECT @Count = COUNT(*) FROM Orders WHERE OrderDate BETWEEN '2024-01-01' AND '2024-12-31';  -- Needs index on OrderDate  
+SELECT @Count = COUNT(*) FROM OrderDetails WHERE OrderID = 500;  -- Needs index on OrderID
+
+-- Run the problematic stored procedure to generate more index suggestions
 EXEC sp_GetCustomerOrderHistory '2024-01-01', '2024-12-31';
 GO
 
+PRINT '';
+PRINT '==============================================';
 PRINT 'CarvedRock database setup completed!';
-PRINT 'Fragmentation demo procedures are ready.';
-PRINT 'Total setup time: ~30 seconds';
+PRINT '==============================================';
+PRINT 'Database contains:';
+PRINT '  - 5,000 customers';
+PRINT '  - 10,000 orders';  
+PRINT '  - ~20,000 order details';
+PRINT '  - Missing indexes on Orders.CustomerID, Orders.OrderDate, OrderDetails.OrderID';
+PRINT '  - Fragmented indexes ready for maintenance';
+PRINT '';
+PRINT 'The sp_GetCustomerOrderHistory procedure will now show:';
+PRINT '  - Execution time of several seconds';
+PRINT '  - Missing index warnings in execution plan';
+PRINT '  - High-cost table scans';
+PRINT '';
+PRINT 'Total setup time: ~60-90 seconds';
 GO
